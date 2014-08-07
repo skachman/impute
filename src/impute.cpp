@@ -14,6 +14,24 @@
 
 
 
+using namespace std;
+
+
+
+class qtlLocus{
+public:
+  double b;
+  vector<int> delta;
+  int active;
+  void init(int nc,double sig2b,double pi);
+};
+
+class haploLocus{
+public:
+  vector<double> p;
+  haploLocus(int nc){p.assign(nc,0);};
+};
+
 class hmmLoci{
 
 public:
@@ -134,13 +152,11 @@ public:
   
 };
   
-
-
-
-
-using namespace std;
-
 typedef unordered_map<string,int> idmap;
+
+void forward(const long start, const long end,hmm &HMM, const vector<int> &X,const vector<double> picomb);
+void backward(const long start, const long end,hmm &HMM, const vector<int> &X);
+void calcPComb(long i,int nComb,hmmLoci *HMMlocus,vector<double> P);
 
 int main(int argc,char **argv){
 
@@ -151,6 +167,7 @@ int main(int argc,char **argv){
   string filename;
   string line,id;
   vector<vector<int> > X;
+  vector<vector<haploLocus> > haploProb;
   //vector<vector<double> > y;
   vector<string > ID;
   double val;
@@ -248,6 +265,8 @@ int main(int argc,char **argv){
   HMM.initPComb();
   
   
+  
+
   //Estimation
   int nComb=HMM.nComb;
   int nIter=10;
@@ -258,45 +277,12 @@ int main(int argc,char **argv){
     
     for(int seq=0;seq< X.size();seq++){
       HMM.initSeq();
+
+      forward(0, nLoci,HMM,X[seq],HMM.piComb);
+      backward(0, nLoci,HMM,X[seq]);
+
       
-      double sum=0,val;
-      for(int l=0;l<nComb;l++){
-	val=HMM.piComb[l]*HMM.emit(0,l,X[seq][0]);
-	HMM.loci[0].f[l]=val;
-	sum+=val;
-      }
-      for(int l=0;l<nComb;l++) HMM.loci[0].f[l]/=sum;//scale
-      for(int i=1;i<nLoci;i++){
-	sum=0;
-	for(int l=0;l<nComb;l++) {
-	  val=0;
-	  for(int k=0;k<nComb;k++){
-	    val+=HMM.loci[i-1].f[k]*HMM.pComb[k][l];
-	  }
-	  val*=HMM.emit(i,l,X[seq][i]);
-	  HMM.loci[i].f[l]=val;
-	  sum+=val;
-	}
-	for(int l=0;l<nComb;l++) HMM.loci[i].f[l]/=sum;//scale
-      }
-      //
-      //  Backwards
-      //
-      for(int l=0;l<nComb;l++) HMM.loci[nLoci-1].b[l]=1;
-      for(long i=nLoci-2;i>=0;i--){
-	sum=0;
-	for(int k=0;k<nComb;k++){
-	  val=0;
-	  for(int l=0;l<nComb;l++){
-	    val+=HMM.pComb[k][l]*HMM.emit(i+1,l,X[seq][i+1])*HMM.loci[i+1].b[l]; 
-	  }
-	  HMM.loci[i].b[k]=val;
-	  sum+=val;
-	 
-	}
-	for(int k=0;k<nComb;k++) HMM.loci[i].b[k]/=sum;
-      }
-      
+      //Compute Probabilities and estimates
       for(long i=0;i<nLoci;i++){
 	double Psum=0;
 	double Pval;
@@ -307,6 +293,7 @@ int main(int argc,char **argv){
 	  int I=HMM.stateI[l];
 	  int J=HMM.stateJ[l];
 	  Pval=HMM.loci[i].f[l]*HMM.loci[i].b[l]/Psum;
+	 
 	  HMM.loci[i].pState[I]+=Pval;
 	  HMM.loci[i].pState[J]+=Pval;
 	  if(X[seq][i]==2){
@@ -353,7 +340,7 @@ int main(int argc,char **argv){
 
     cout << std::fixed << std::setprecision(2);
     for(int l=0;l<nStates;l++){
-      cout << "e "<< l;
+      cout << "e  "<< l;
       for(long i=0;i<10;i++){
 	cout << " " << HMM.loci[i].e[l];
       }
@@ -364,9 +351,10 @@ int main(int argc,char **argv){
       cout << endl;
     }
     cout << endl;
+
 cout << std::fixed << std::setprecision(2);
       for(int l=0;l<nStates;l++){
-	cout << "P "<< l;
+	cout << "P  "<< l;
 	for(long i=0;i<10;i++){
 	  cout << " " << HMM.loci[i].pState[l]/(2.*(nSeq+priorCount));
 	}
@@ -377,7 +365,34 @@ cout << std::fixed << std::setprecision(2);
 	cout << endl;
       }
       cout <<endl;
-    if(0){
+
+
+
+      cout << std::fixed << std::setprecision(2);
+      vector<double> pSumV;
+      pSumV.assign(nLoci,0.0);
+      for(int l=0;l<nComb;l++){
+	for(long i=0;i<10;i++) pSumV[i]+=HMM.loci[i].f[l]*HMM.loci[i].b[l];	
+	for(long i=nLoci-10;i<nLoci;i++)pSumV[i]+=HMM.loci[i].f[l]*HMM.loci[i].b[l];
+      }
+      
+      
+      for(int l=0;l<nComb;l++){
+	cout << "pc "<< HMM.stateI[l] << "/" << HMM.stateJ[l] << ":";
+	for(long i=0;i<10;i++){
+	  cout << " " << HMM.loci[i].f[l]*HMM.loci[i].b[l]/pSumV[i];
+	}
+	cout << "    ";
+	for(long i=nLoci-10;i<nLoci;i++){
+	  cout << " " << HMM.loci[i].f[l]*HMM.loci[i].b[l]/pSumV[i];
+	}
+	cout << endl;
+      }
+      cout <<endl;
+
+
+
+      if(0){
       cout << std::fixed << std::setprecision(2);
       for(int l=0;l<nStates;l++){
 	cout << "E "<< l;
@@ -416,14 +431,92 @@ cout << std::fixed << std::setprecision(2);
     }
       
   }
+
+
+  //
+  // MCMC
+  //
+
+  matvec::UniformDist u;
+  double sig2b=10,sig2e=15;
+  double pi=.95;
+  vector<qtlLocus> qtlVec;
+  qtlVec.resize(nLoci);
+  for(long i=0;i<nLoci;i++) qtlVec[i].init(nComb,sig2b,pi);
+  
+  
   
 }
 
   
 
+void qtlLocus::init(int nc,double sig2b,double pi){
+  matvec::UniformDist u;
+  matvec::NormalDist x(0,sig2b);
+  b=x.sample();
+  delta.assign(nc,0);
+  for(int i=0;i<nc;i++) {
+    if(u.sample() < 0.5) delta[i]=1;
+  }
+  active=0;
+  if(u.sample()>pi) active=1;
+}
 
 
+void forward(const long start, const long end,hmm &HMM, const vector<int> &X,const vector<double> picomb){
+  int nComb=HMM.nComb,nStates=HMM.nStates;
+  double sum=0,val;
+  for(int l=0;l<nComb;l++){
+    val=picomb[l]*HMM.emit(start,l,X[start]);
+      HMM.loci[start].f[l]=val;
+      sum+=val;
+   
+  }
+  for(int l=0;l<nComb;l++) HMM.loci[start].f[l]/=sum;//scale
+  for(int i=start+1;i<end;i++){
+    sum=0;
+    for(int l=0;l<nComb;l++) {
+      val=0;
+      for(int k=0;k<nComb;k++){
+	val+=HMM.loci[i-1].f[k]*HMM.pComb[k][l];
+      }
+      val*=HMM.emit(i,l,X[i]);
+      HMM.loci[i].f[l]=val;
+      sum+=val;
+    }
+    for(int l=0;l<nComb;l++) HMM.loci[i].f[l]/=sum;//scale
+  }
+}
+
+void backward(const long start, const long end,hmm &HMM, const vector<int> &X){
+  int nComb=HMM.nComb,nStates=HMM.nStates;
+  double sum,val;
+  for(int l=0;l<nComb;l++) HMM.loci[end-1].b[l]=1;
+  for(long i=end-2;i>=start;i--){
+    sum=0;
+    for(int k=0;k<nComb;k++){
+      val=0;
+      for(int l=0;l<nComb;l++){
+	val+=HMM.pComb[k][l]*HMM.emit(i+1,l,X[i+1])*HMM.loci[i+1].b[l]; 
+      }
+      HMM.loci[i].b[k]=val;
+      sum+=val;
+      
+    }
+    for(int k=0;k<nComb;k++) HMM.loci[i].b[k]/=sum;
+  }
+  
+}
 
 
-
+void calcPComb(long i,int nComb,hmmLoci *HMMlocus,vector<double> P){
+  P.resize(nComb);
+  double Pval,Psum=0;
+  for(int l=0;l<nComb;l++){
+    Pval=HMMlocus->f[l]*HMMlocus->b[l];
+    Psum+=Pval;
+    P[l]=Pval;
+  }
+  for(int l=0;l<nComb;l++) P[l]/=Psum;
+}
 
