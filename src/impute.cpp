@@ -1,172 +1,16 @@
-#include <iostream>
-#include <fstream>
-#include <string>
-#include <sstream>
-#include <vector>
-#include <unordered_map>
-#include <matvec/mim.h>
-#include <matvec/parmMap.h>
-#include <matvec/session.h>
-#include <matvec/statdist.h>
-#include <time.h>
-#include <dirent.h>
-#include <cmath>
-
-
-
-using namespace std;
-
-
-
-class qtlLocus{
-public:
-  double b;
-  vector<int> delta;
-  int active;
-  void init(int nc,double sig2b,double pi);
-};
-
-class haploLocus{
-public:
-  vector<double> p;
-  haploLocus(int nc){p.assign(nc,0);};
-};
-
-class hmmLoci{
-
-public:
-  vector<double> e,f,b,E,pState;
-  hmmLoci() {hmmLoci(0,0);};
-  hmmLoci(int ns,int nc){
-    e.resize(ns);
-    f.resize(nc);
-    b.resize(nc);
-    E.resize(ns);
-    pState.resize(ns);
-  };
-   
-};
-
-
-class hmm{
-public:
-  int nStates,nComb;
-  long nLoci;
-  double c;
-  
-  vector<vector<double> > p,pComb; 
-  vector<double> pi,piComb;
-  vector<int> stateI,stateJ;
-  vector<hmmLoci> loci;
-
-  void initPComb(){
-    pComb.resize(nComb);
-    piComb.assign(nComb,0.0);
-    for(int c=0;c<nComb;c++){
-      pComb[c].assign(nComb,0.0);
-    }
-
-    for(int i1=0;i1<nStates;i1++){
-      for(int j1=0;j1<nStates;j1++){
-	int c1=i1*(i1+1)/2+j1;
-	if(j1>i1) c1=j1*(j1+1)/2+i1;
-	piComb[c1]+=pi[i1]*pi[j1];
-	for(int i2=0;i2<nStates;i2++){
-	  for(int j2=0;j2<nStates;j2++){
-	    int c2=i2*(i2+1)/2+j2;
-	    if(j2>i2) c2=j2*(j2+1)/2+i2;
-	    pComb[c1][c2]+=p[i1][i2]*p[j1][j2];
-	  } 
-	}
-      }
-    }
-  };
-
-  void resetP(){
-    for(int i=0;i<nStates;i++){
-      for(int j=0;j<nStates;j++){
-	p[i][j]=((1-c)*pi[j]/(1-pi[i]));
-      }
-      p[i][i]=c; 
-    }
-  };
-  hmm(const long nL,const int nS,const double alpha,const double beta){
-    nLoci=nL;
-    nStates=nS;
-    initComb();
-    initLoci(alpha,beta);
-    pi.resize(nStates);
-    piComb.resize(nComb);
-    p.resize(nStates);
-    for(int k=0;k<nStates;k++) p[k].resize(nStates,0.0);
-  };
-
-  void initComb(){
-    nComb=nStates*(nStates+1)/2;
-    stateI.resize(nComb);
-    stateJ.resize(nComb);
-    for(int i=0;i<nStates;i++) {
-      for(int j=0;j<=i;j++){
-	int c=i*(i+1)/2+j;
-	stateI[c]=i;
-	stateJ[c]=j;
-      }
-    }
-  };
-  void initBW(const double priorCount){
-    for(long i=0;i<nLoci;i++){
-      loci[i].E.assign(nStates,priorCount);
-      loci[i].pState.assign(nStates,2.*priorCount);
-    }
-  };
-  void initSeq(){
-    for(long i=0;i<nLoci;i++){
-      loci[i].f.assign(nComb,0.0);
-      loci[i].b.assign(nComb,0.0);
-    }
-  };
-  
-  void initLoci(double alpha,double beta) {
-    matvec::BetaDist betaDist(alpha,beta);
-    hmmLoci locus(nStates,nComb);
-    loci.resize(nLoci,locus);
-    for(long i=0;i<nLoci;i++) {
-      loci[i].e.assign(nStates,0.0);
-      for(int l=0;l<nStates;l++){
-	double val;
-	val=betaDist.sample();
-	loci[i].e[l]=val;
-      }
-    }
-  };
-  
-  double emit(long i, int l, int x){
-    int I=stateI[l];
-    int J=stateJ[l];
-    double val=1;
-    if(x==0) val=(1.-loci[i].e[I])*(1.-loci[i].e[J]);
-    if(x==1) val=loci[i].e[I]*(1.-loci[i].e[J])+(1.-loci[i].e[I])*loci[i].e[J];
-    if(x==2) val=loci[i].e[I]*loci[i].e[J];
-    return(val);
-  } 
-  
-};
-  
-typedef unordered_map<string,int> idmap;
-
-void forward(const long start, const long end,hmm &HMM, const vector<int> &X,const vector<double> picomb);
-void backward(const long start, const long end,hmm &HMM, const vector<int> &X);
-void calcPComb(long i,int nComb,hmmLoci *HMMlocus,vector<double> P);
+#include "impute.h"
 
 int main(int argc,char **argv){
 
+  matvec::UniformDist u;
+  matvec::NormalDist Z;
   idmap seqMap,phenMap;
   idmap::iterator seqMapIt,phenMapIt;
 
   ifstream Geno,Pheno;
   string filename;
   string line,id;
-  vector<vector<int> > X;
+  vector<vector<int> > X,XHaplo;
   vector<vector<haploLocus> > haploProb;
   //vector<vector<double> > y;
   vector<string > ID;
@@ -199,7 +43,6 @@ int main(int argc,char **argv){
     }
     
   }
-  
   cout <<  X.size() << endl;
   cout << X[0].size() << endl;
   cout << X[X.size()-1].size() << endl;
@@ -218,7 +61,7 @@ int main(int argc,char **argv){
   filename="BWTdrgEPDACC_ra.dat";
   Pheno.open(filename);
   getline(Pheno,line);
-  vector<double> y,mu,rinverse;
+  vector<double> y,Xmu,rinverse;
   vector<int> phenSeq;
   while(getline(Pheno,line)){
     stringstream linestream(line);
@@ -229,7 +72,7 @@ int main(int argc,char **argv){
       linestream >> val;
       y.push_back(val);
       linestream >> val;
-      mu.push_back(val);
+      Xmu.push_back(val);
       linestream >> val;
       rinverse.push_back(val);
       
@@ -239,10 +82,10 @@ int main(int argc,char **argv){
 
   cout << "Matched Phenotypes "<< nPheno  << endl;
   for(int i=0;i< 10;i++){
-    cout << phenSeq[i] << " " << ID[phenSeq[i]] << " " << y[i] << " " << mu[i] << " " << rinverse[i] << endl;
+    cout << phenSeq[i] << " " << ID[phenSeq[i]] << " " << y[i] << " " << Xmu[i] << " " << rinverse[i] << endl;
   }
 
-  int nStates=6;
+  int nStates=4;
   long nLoci=X[0].size();
   hmmLoci locus;
   hmm HMM(nLoci,nStates,0.5,0.5);
@@ -264,12 +107,15 @@ int main(int argc,char **argv){
   HMM.resetP();
   HMM.initPComb();
   
-  
+  XHaplo.resize(nLoci);
+  for(long i=0;i<nLoci;i++) XHaplo[i].resize(nPheno); 
   
 
   //Estimation
   int nComb=HMM.nComb;
   int nIter=10;
+  vector<double> pVec(nComb);
+  discrete_distribution<int> classDist;
   for(int iter=0;iter<nIter;iter++){
     cout << "Iteration " << iter <<endl;
     HMM.initBW(priorCount);
@@ -281,7 +127,7 @@ int main(int argc,char **argv){
       forward(0, nLoci,HMM,X[seq],HMM.piComb);
       backward(0, nLoci,HMM,X[seq]);
 
-      
+      vector<double> Pvec(nComb);
       //Compute Probabilities and estimates
       for(long i=0;i<nLoci;i++){
 	double Psum=0;
@@ -293,7 +139,8 @@ int main(int argc,char **argv){
 	  int I=HMM.stateI[l];
 	  int J=HMM.stateJ[l];
 	  Pval=HMM.loci[i].f[l]*HMM.loci[i].b[l]/Psum;
-	 
+	  Pvec[l]=Pval;
+	  HMM.loci[i].piVec[l]+=Pval;
 	  HMM.loci[i].pState[I]+=Pval;
 	  HMM.loci[i].pState[J]+=Pval;
 	  if(X[seq][i]==2){
@@ -320,6 +167,7 @@ int main(int argc,char **argv){
     double nSeq;
     nSeq=(double) X.size();
     for(long i=0;i<nLoci;i++){
+      for(int l=0;l<nComb;l++) HMM.loci[i].piVec[l]/=(nSeq+priorCount);
       for(int l=0;l<nStates;l++){
 	if(HMM.loci[i].pState[l] > 0){
 	  HMM.loci[i].e[l]=HMM.loci[i].E[l]/HMM.loci[i].pState[l];
@@ -352,47 +200,47 @@ int main(int argc,char **argv){
     }
     cout << endl;
 
-cout << std::fixed << std::setprecision(2);
-      for(int l=0;l<nStates;l++){
-	cout << "P  "<< l;
-	for(long i=0;i<10;i++){
-	  cout << " " << HMM.loci[i].pState[l]/(2.*(nSeq+priorCount));
-	}
-	cout << "    ";
-	for(long i=nLoci-10;i<nLoci;i++){
-	  cout << " " << HMM.loci[i].pState[l]/(2.*(nSeq+priorCount));
-	}
-	cout << endl;
+    cout << std::fixed << std::setprecision(2);
+    for(int l=0;l<nStates;l++){
+      cout << "P  "<< l;
+      for(long i=0;i<10;i++){
+	cout << " " << HMM.loci[i].pState[l]/(2.*(nSeq+priorCount));
       }
-      cout <<endl;
-
-
-
-      cout << std::fixed << std::setprecision(2);
-      vector<double> pSumV;
-      pSumV.assign(nLoci,0.0);
-      for(int l=0;l<nComb;l++){
-	for(long i=0;i<10;i++) pSumV[i]+=HMM.loci[i].f[l]*HMM.loci[i].b[l];	
-	for(long i=nLoci-10;i<nLoci;i++)pSumV[i]+=HMM.loci[i].f[l]*HMM.loci[i].b[l];
+      cout << "    ";
+      for(long i=nLoci-10;i<nLoci;i++){
+	cout << " " << HMM.loci[i].pState[l]/(2.*(nSeq+priorCount));
       }
-      
-      
-      for(int l=0;l<nComb;l++){
-	cout << "pc "<< HMM.stateI[l] << "/" << HMM.stateJ[l] << ":";
-	for(long i=0;i<10;i++){
-	  cout << " " << HMM.loci[i].f[l]*HMM.loci[i].b[l]/pSumV[i];
-	}
-	cout << "    ";
-	for(long i=nLoci-10;i<nLoci;i++){
-	  cout << " " << HMM.loci[i].f[l]*HMM.loci[i].b[l]/pSumV[i];
-	}
-	cout << endl;
+      cout << endl;
+    }
+    cout <<endl;
+    
+    
+    
+    cout << std::fixed << std::setprecision(2);
+    vector<double> pSumV;
+    pSumV.assign(nLoci,0.0);
+    for(int l=0;l<nComb;l++){
+      for(long i=0;i<10;i++) pSumV[i]+=HMM.loci[i].f[l]*HMM.loci[i].b[l];	
+      for(long i=nLoci-10;i<nLoci;i++)pSumV[i]+=HMM.loci[i].f[l]*HMM.loci[i].b[l];
+    }
+    
+    
+    for(int l=0;l<nComb;l++){
+      cout << "pc "<< HMM.stateI[l] << "/" << HMM.stateJ[l] << ":";
+      for(long i=0;i<10;i++){
+	cout << " " << HMM.loci[i].f[l]*HMM.loci[i].b[l]/pSumV[i];
       }
-      cout <<endl;
-
-
-
-      if(0){
+      cout << "    ";
+      for(long i=nLoci-10;i<nLoci;i++){
+	cout << " " << HMM.loci[i].f[l]*HMM.loci[i].b[l]/pSumV[i];
+      }
+      cout << endl;
+    }
+    cout <<endl;
+    
+    
+    
+    if(0){
       cout << std::fixed << std::setprecision(2);
       for(int l=0;l<nStates;l++){
 	cout << "E "<< l;
@@ -401,8 +249,8 @@ cout << std::fixed << std::setprecision(2);
 	}
 	cout << endl;
       }
-
-
+      
+      
       cout << std::fixed << std::setprecision(2);
       for(int l=0;l<nStates;l++){
 	cout << "P "<< l;
@@ -434,36 +282,252 @@ cout << std::fixed << std::setprecision(2);
 
 
   //
+  // Fill in HaploVec
+  //
+  for(int a=0;a<nPheno;a++){
+    int seq=phenSeq[a];
+    int ranClass;
+    forward(0, nLoci,HMM,X[seq],HMM.piComb);
+    //backward(0, nLoci,HMM,X[seq]);
+    vector<double> Pvec(nComb);
+    {
+      double Psum=0;
+      double Pval;
+      for(int l=0;l<nComb;l++){
+	Psum+=HMM.loci[nLoci-1].f[l];
+      }
+      for(int l=0;l<nComb;l++){
+	Pval=HMM.loci[nLoci-1].f[l]/Psum;
+	Pvec[l]=Pval;
+      }
+      double uSmp=u.sample();
+      double Thresh=0;
+      for(int l=0;uSmp>Thresh && l< nComb;l++){
+	ranClass=l;
+	Thresh+=Pvec[l];
+      }
+      XHaplo[nLoci-1][a]=ranClass;
+    }
+    for(long i=nLoci-2;i>=0;i--){
+      double Psum=0;
+      double Pval;
+      for(int l=0;l<nComb;l++){
+	Psum+=HMM.loci[i].f[l]*HMM.pComb[l][ranClass];
+      }
+      for(int l=0;l<nComb;l++){
+	Pval=HMM.loci[i].f[l]*HMM.pComb[l][ranClass]/Psum;
+	Pvec[l]=Pval;
+      }
+      double uSmp=u.sample();
+      double Thresh=0;
+
+      for(int l=0;uSmp>Thresh && l< nComb;l++){
+	ranClass=l;
+	Thresh+=Pvec[l];
+	//if(i <5 && a < 5) cout << "Pv l "<< Pvec[l] << " "<< l << endl; 
+      }
+      //if(i <5 && a < 5) cout << i << " " << a << " " << uSmp << " " << Thresh  <<endl << Pvec[ranClass]<< endl << ranClass<<  endl; 
+      XHaplo[i][a]=ranClass;  
+    }
+  }
+
+  cout << "XHalpo " << XHaplo.size() <<"x" << XHaplo[0].size() << endl;
+
+  for(int i=0;i<10;i++) 
+    {
+      cout << i ;
+      for(int a=0;a<20; a++){ 
+	cout << " " << setw(2) << XHaplo[i][a];
+      }
+      cout <<endl;
+    }
+  cout <<endl;
+
+
+  //
   // MCMC
   //
 
-  matvec::UniformDist u;
-  double sig2b=10,sig2e=15;
-  double pi=.95;
+  double sig2bPrior=.2,sig2ePrior=21;
+
+  double pi=.95,mu=0;
+  int nSamples=10;
+  int nBurnIn=0;
+
+  double nusig2e=10,nusig2b=4;
+  double sig2e=sig2ePrior,sig2b=sig2bPrior;
+  double scaleRes=sig2ePrior*(nusig2e-2.);
+  double scaleB=sig2bPrior*(nusig2b-2.);
+  double nuTilde,uSmp;
+  double flipDelta=2./((double) nStates);
   vector<qtlLocus> qtlVec;
+  vector<long> activeLoci;
+  long activePos=0;
+  uSmp=u.sample();
   qtlVec.resize(nLoci);
-  for(long i=0;i<nLoci;i++) qtlVec[i].init(nComb,sig2b,pi);
+  activeLoci.resize(0);
+  for(long i=0;i<nLoci;i++) {
+    qtlVec[i].init(nStates,sig2b,pi);
+    if(qtlVec[i].active){
+      activeLoci.push_back(i);
+    }
+  }
+
   
+  vector<double> yDev(nPheno),xVec(nPheno),probClass(nComb);
   
-  
+
+  for(int s=0;s<nSamples;s++){
+    double ssb=scaleB*nusig2b,sse=scaleRes*nusig2e;
+    cout <<"ssb sse "<< ssb <<  " " << sse << " " << scaleB << " " <<nusig2b<< endl;
+    long nQTL=activeLoci.size();
+    yDev=y;
+    for(int a=0;a<nPheno;a++){
+      int seq=phenSeq[a];
+      yDev[a]-=mu;
+      for(long i=0;i<nQTL;i++){
+	long locus=activeLoci[i];
+	int seqClass=XHaplo[locus][a];
+	int I=HMM.stateI[seqClass];
+	int J=HMM.stateJ[seqClass];
+	yDev[a]-=(qtlVec[locus].delta[I]+qtlVec[locus].delta[J])*qtlVec[locus].b;
+      }
+    }
+
+    activeLoci.resize(0);
+    for(long i=0;i<nLoci;i++){
+      int active=qtlVec[i].active;
+      int nowActive=0;
+      double logAoverI=log((1.-pi)/pi);
+      double b=qtlVec[i].b;
+      for(int a=0;a<nPheno;a++){
+	int seq=phenSeq[a];
+	int seqClass=XHaplo[i][a];
+	int I=HMM.stateI[seqClass];
+	int J=HMM.stateJ[seqClass];
+  	xVec[a]=(qtlVec[i].delta[I]+qtlVec[i].delta[J]);
+	double xb=xVec[a]*b;
+	if(active)  yDev[a]+=xb;
+	logAoverI+=(2.*yDev[a]-xb)*xb*rinverse[a]/(2.*sig2e);
+	
+      }
+      uSmp=u.sample();
+      if(log(uSmp/(1.-uSmp))<logAoverI) nowActive=1; 
+      double bDelta=0;
+      qtlVec[i].active=nowActive;
+      if(nowActive) activeLoci.push_back(i); 
+      double sumXY,sumXX;
+      sumXY=0;
+      sumXX=sig2e/sig2b;
+      if(nowActive){
+	for(int a=0;a<nPheno;a++){
+	  double x=xVec[a];
+	  sumXY+=x*yDev[a]*rinverse[a];
+	  sumXX+=rinverse[a]*x*x;
+	}
+      }
+      b=sumXY/sumXX+Z.sample()*sqrt(sig2e/sumXX); //sample b
+     
+      qtlVec[i].b=b;
+      ssb+=b*b;
+      //
+      // Now sample delta
+      //
+      vector<double> logPdelta(nComb,0.0);
+      //
+      // cout << nComb << " " << logPdelta.size() << endl;
+      if(nowActive) {	
+	for(int a=0;a<nPheno;a++){
+	  int seq=phenSeq[a];
+	  int seqClass=XHaplo[i][a];
+	  int I=HMM.stateI[seqClass];
+	  int J=HMM.stateJ[seqClass];
+	  logPdelta[I*(I+1)/2+J]-=b*b*rinverse[a]/(2.*sig2e);
+	  logPdelta[I*(I+1)/2+I]+=(2.*yDev[a]*b-b*b)*rinverse[a]/(2.*sig2e);
+	  logPdelta[J*(J+1)/2+J]+=(2.*yDev[a]*b-b*b)*rinverse[a]/(2.*sig2e);
+	}
+      }
+
+      vector<int> deltaNew(nStates,0);
+      vector<int> deltaOld=qtlVec[i].delta;
+      for(int l=0;l<nStates;l++){
+	if(u.sample()<flipDelta) deltaNew[l]=1-deltaOld[l];  
+      }
+      double logSwitch=0;
+      for(int I=0;I<nStates;I++){
+	for(int J=0;J<=I;J++){
+	  int l=I*(I+1)/2+J;
+	  logSwitch+=logPdelta[l]*(deltaNew[I]*deltaNew[J]-deltaOld[I]*deltaOld[J]);
+	}
+      }
+      uSmp=u.sample();
+      if(log(uSmp/(1.-uSmp))<logSwitch)qtlVec[i].delta=deltaNew;
+      
+
+      if(nowActive){
+	for(int a=0;a<nPheno;a++){
+	  int seq=phenSeq[a];
+	  int seqClass=XHaplo[i][a];
+	  int I=HMM.stateI[seqClass];
+	  int J=HMM.stateJ[seqClass];
+	  yDev[a]-=(qtlVec[i].delta[I]+qtlVec[i].delta[J])*b;
+	}
+      }
+    }
+    //update mu;
+    double sumXY=0,sumXX=0;
+    for(int a=0;a<nPheno;a++){
+      sumXY+=rinverse[a]*(yDev[a]+mu);
+      sumXX+=rinverse[a];
+    }
+    double newMu=sumXY/sumXX+Z.sample()*sqrt(sig2e/sumXX);
+    for(int a=0;a<nPheno;a++) yDev[a]-=newMu-mu;
+    mu=newMu;
+    //update sig2e;
+    nuTilde=((double) nPheno)+nusig2e;
+    cout << "sse " << sse << "  -> ";
+    for(int a=0;a<nPheno;a++) sse+=yDev[a]*yDev[a]*rinverse[a];
+    cout << sse <<endl;
+    double X2;
+    X2=2.*matvec::sgamma(nuTilde/2.0); //Chi-squared;
+    sig2e=sse/X2;
+
+    //update sig2b;
+    nuTilde=((double) nLoci)+nusig2b;
+    X2=2.*matvec::sgamma(nuTilde/2.0); //Chi-squared;
+    sig2b=ssb/X2;
+    cout << endl;
+    cout << "Sample: " << s << endl;
+    cout << setprecision(8) << "Sig2b: " << sig2b << " Sig2e: " << sig2e << endl;
+    cout << "mu " << mu << endl;
+    cout << "number Active: " <<  activeLoci.size() << endl;
+    for(int i=0; i< activeLoci.size()  ; i++ ) {
+      cout <<setw(5) << " " << activeLoci[i];
+      if((i %10)==9) cout <<endl;
+    }
+    cout << endl <<endl;
+  }
+	
+      
 }
 
+
   
 
-void qtlLocus::init(int nc,double sig2b,double pi){
+void qtlLocus::init(int ns,double sig2b,double pi){
   matvec::UniformDist u;
   matvec::NormalDist x(0,sig2b);
   b=x.sample();
-  delta.assign(nc,0);
-  for(int i=0;i<nc;i++) {
-    if(u.sample() < 0.5) delta[i]=1;
+  delta.assign(ns,0);
+  for(int i=0;i<ns;i++) {
+    if(u.sample() < .5) delta[i]=1;
   }
   active=0;
   if(u.sample()>pi) active=1;
 }
 
 
-void forward(const long start, const long end,hmm &HMM, const vector<int> &X,const vector<double> picomb){
+void forward(const long start, const long end,hmm &HMM, const vector<int> &X,const vector<double> &picomb){
   int nComb=HMM.nComb,nStates=HMM.nStates;
   double sum=0,val;
   for(int l=0;l<nComb;l++){
@@ -509,14 +573,19 @@ void backward(const long start, const long end,hmm &HMM, const vector<int> &X){
 }
 
 
-void calcPComb(long i,int nComb,hmmLoci *HMMlocus,vector<double> P){
+void calcPComb(int nComb,hmmLoci &HMMlocus,vector<double> &P){
   P.resize(nComb);
   double Pval,Psum=0;
   for(int l=0;l<nComb;l++){
-    Pval=HMMlocus->f[l]*HMMlocus->b[l];
+    Pval=HMMlocus.f[l]*HMMlocus.b[l];
     Psum+=Pval;
     P[l]=Pval;
   }
   for(int l=0;l<nComb;l++) P[l]/=Psum;
 }
+
+
+
+
+
 

@@ -10,8 +10,8 @@ CC            = clang
 CXX           = clang++
 DEFINES       = 
 CFLAGS        = -pipe -g -Wall -W $(DEFINES)
-#CXXFLAGS      = -pipe -O3 -ftree-vectorize -ftree-vectorizer-verbose=5 -funsafe-math-optimizations -g -Wall -W -arch x86_64 $(DEFINES)
-CXXFLAGS      = -pipe -O3 -funsafe-math-optimizations -g  -arch x86_64 $(DEFINES) #-Wall -W
+#CXXFLAGS      = -pipe -O3 -ftree-vectorize -ftree-vectorizer-verbose=5 -funsafe-math-optimizations -g  -arch x86_64 $(DEFINES) # -Wall -W
+CXXFLAGS      = -pipe -O3 -funsafe-math-optimizations -g  -arch x86_64 $(DEFINES) #
 #CXXFLAGS      = -pipe  -g  -arch x86_64 $(DEFINES) #-Wall -W
 
 INCPATH       =  -I/opt/local/include/eigen3/ -I/opt/local/include -I. -Iinclude
