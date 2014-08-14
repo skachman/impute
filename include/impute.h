@@ -6,6 +6,7 @@
 #include <list>
 #include <random>
 #include <unordered_map>
+#include <algorithm>
 #include <matvec/mim.h>
 #include <matvec/parmMap.h>
 #include <matvec/session.h>
@@ -18,15 +19,27 @@
 
 using namespace std;
 
+class locusMap{
+ public:
+  string name;
+  int chrom;
+  long pos;
+  locusMap(string s,int c, long p){name=s;chrom=c;pos=p;};
+  locusMap(){};
+  
+};
 
+bool locusMapCompare(locusMap &A,locusMap &B);
 
 class qtlLocus{
-public:
+ public:
   double b;
   vector<int> delta;
   int active;
   list<long> *activePos;
   void init(int nc,double sig2b,double pi);
+  void init(int nc);
+  void updateSum(const qtlLocus &A);
 };
 
 class haploLocus{
@@ -36,11 +49,12 @@ public:
 };
 
 class hmmLoci{
-
 public:
   vector<double> e,f,b,E,pState,piVec;
+  int newChrom;
   hmmLoci() {hmmLoci(0,0);};
   hmmLoci(int ns,int nc){
+    newChrom=0;
     e.resize(ns);
     f.resize(nc);
     b.resize(nc);
@@ -145,20 +159,22 @@ public:
     }
   };
   
-  double emit(long i, int l, int x){
+  double emit(const long i, const int l, const int x){
     int I=stateI[l];
     int J=stateJ[l];
     double val=1;
     if(x==0) val=(1.-loci[i].e[I])*(1.-loci[i].e[J]);
-    if(x==1) val=loci[i].e[I]*(1.-loci[i].e[J])+(1.-loci[i].e[I])*loci[i].e[J];
-    if(x==2) val=loci[i].e[I]*loci[i].e[J];
+    else if(x==1) val=loci[i].e[I]*(1.-loci[i].e[J])+(1.-loci[i].e[I])*loci[i].e[J];
+    else if(x==2) val=loci[i].e[I]*loci[i].e[J];
     return(val);
   } 
-  
+  int write(const string &filename);
+  int read(const string &filename);
 };
   
 typedef unordered_map<string,int> idmap;
 
 void forward(const long start, const long end,hmm &HMM, const vector<int> &X,const vector<double> &picomb);
-void backward(const long start, const long end,hmm &HMM, const vector<int> &X);
+void backward(const long start, const long end,hmm &HMM, const vector<int> &X,const vector<double> &picomb);
 void calcPComb(int nComb,hmmLoci &HMMlocus,vector<double> &P);
+
