@@ -21,7 +21,7 @@ int main(int argc,char **argv){
   vector<vector<haploLocus> > haploProb;
   vector<locusMap> lociMap;
   locusMap aMapLocus;
-  //vector<vector<double> > y;
+
   vector<string > ID;
   double val;
   int iVal;
@@ -133,9 +133,6 @@ int main(int argc,char **argv){
       rinverse.push_back(val);
       
     }
-    else{
-      //cout << id << " Not Found " <<  ++notFound<< endl;
-    }
   }
   int nPheno=y.size();
 
@@ -157,7 +154,6 @@ int main(int argc,char **argv){
       HMM.pi[i]=pival;
       sum+=pival;
       pival+=delta;
-      //HMM.pi[i]=1./((double) nStates);
     }
     for(int i=0;i<nStates;i++) HMM.pi[i]/=sum;
 
@@ -183,7 +179,7 @@ int main(int argc,char **argv){
   int nComb=HMM.nComb;
   int nIter=10;
   vector<double> pVec(nComb);
-  //discrete_distribution<int> classDist;
+
   for(int iter=0;iter<nIter;iter++){
     cout << "Iteration " << iter <<endl;
     HMM.initBW(priorCount);
@@ -195,7 +191,9 @@ int main(int argc,char **argv){
       backward(0, nLoci,HMM,X[seq],HMM.piComb);
 
       vector<double> Pvec(nComb);
+
       //Compute Probabilities and estimates
+      
       for(long i=0;i<nLoci;i++){
 	double Psum=0;
 	double Pval;
@@ -309,45 +307,7 @@ int main(int argc,char **argv){
     cout <<endl;
     
     
-    
-    if(0){
-      cout << std::fixed << std::setprecision(2);
-      for(int l=0;l<nStates;l++){
-	cout << "E "<< l;
-	for(long i=0;i<10;i++){
-	  cout << " " << HMM.loci[i].E[l];
-	}
-	cout << endl;
-      }
-      
-      
-      cout << std::fixed << std::setprecision(2);
-      for(int l=0;l<nStates;l++){
-	cout << "P "<< l;
-	for(long i=0;i<10;i++){
-	  cout << " " << HMM.loci[i].pState[l]/nSeq;
-	}
-	cout << endl;
-      }
-      
-      cout << std::fixed << std::setprecision(2);
-      for(int l=0;l<nComb;l++){
-	cout << "f "<< l;
-	for(long i=0;i<10;i++){
-	  cout << " " << HMM.loci[i].f[l];
-	}
-	cout << endl;
-      }
-      cout << std::fixed << std::setprecision(2);
-      for(int l=0;l<nComb;l++){
-	cout << "b " << l;
-	for(long i=0;i<10;i++){
-	  cout << " " << HMM.loci[i].b[l];
-	}
-	cout << endl;
-      }
-    }
-      
+   
   }
 
   HMM.write(hmmFileName);
@@ -364,10 +324,10 @@ int main(int argc,char **argv){
   //double sig2bPrior=.5,sig2ePrior=20;
   double sig2bPrior=.05,sig2ePrior=5;
   double pi=.99,mu=0;
-  int nSamples=2100;
-  int nBurnIn=100;
+  int nSamples=41000;
+  int nBurnIn=1000;
   int FreqToSampleHaplo=100; 
-  int outputFreq=2;
+  int outputFreq=40;
 
   double nusig2e=10,nusig2b=4;
   double sig2e=sig2ePrior,sig2b=sig2bPrior,sig2g;
@@ -416,7 +376,6 @@ int main(int argc,char **argv){
 	int ranClass,ranClassOld;
 	double logPNewvsOld;
 	forward(0, nLoci,HMM,X[seq],HMM.piComb);
-	//backward(0, nLoci,HMM,X[seq]);
 	vector<double> Pvec(nComb);
 	{
 	  double Psum=0;
@@ -475,8 +434,6 @@ int main(int argc,char **argv){
 	}
       }
       cout << nFlipped << " of " << nPheno << endl;
-      
-      
 
       cout << "XHalpo " << XHaplo.size() <<"x" << XHaplo[0].size() << endl;
       
@@ -499,13 +456,14 @@ int main(int argc,char **argv){
 
 
     double ssb=scaleB,sse=scaleRes,ssg=0;
-    cout <<"ssb sse "<< ssb <<  " " << sse << " " << scaleB << " " <<nusig2b<< endl;
+    
     nQTL=activeLoci.size();
     yDev=y;
     gHat.assign(nPheno,0.);
     for(int a=0;a<nPheno;a++){
       int seq=phenSeq[a];
       yDev[a]-=mu;
+      gHat[a]=0;
       for(long i=0;i<nQTL;i++){
 	long locus=activeLoci[i];
 	int seqClass=XHaplo[locus][a];
@@ -554,8 +512,7 @@ int main(int argc,char **argv){
       // Now sample delta
       //
       vector<double> logPdelta(nComb,0.0);
-      //
-      // cout << nComb << " " << logPdelta.size() << endl;
+
       if(nowActive) {
 	ssb+=b*b;	
 	for(int a=0;a<nPheno;a++){
@@ -607,6 +564,7 @@ int main(int argc,char **argv){
     double newMu=sumXY/sumXX+Z.sample()*sqrt(sig2e/sumXX);
     for(int a=0;a<nPheno;a++) yDev[a]-=newMu-mu;
     mu=newMu;
+
     //Calc sig2g
     
     for(int a=0;a<nPheno;a++) ssg+=gHat[a]*gHat[a];
@@ -621,17 +579,17 @@ int main(int argc,char **argv){
 
     //update sig2e;
     nuTilde=((double) nPheno)+nusig2e;
-    cout << "sse " << sse << "  -> ";
+
     for(int a=0;a<nPheno;a++) sse+=yDev[a]*yDev[a]*rinverse[a];
-    cout << sse <<endl;
+
     double X2;
-    X2=2.*matvec::sgamma(nuTilde/2.0); //Chi-squared;
+    X2=2.*matvec::sgamma(nuTilde/2.0); //Chi-square;
     sig2e=sse/X2;
 
     //update sig2b;
     nQTL=activeLoci.size();
     nuTilde=((double) nQTL)+nusig2b;
-    X2=2.*matvec::sgamma(nuTilde/2.0); //Chi-squared;
+    X2=2.*matvec::sgamma(nuTilde/2.0); //Chi-square;
     sig2b=ssb/X2;
     cout << endl;
     cout << "Sample: " << s << endl;
