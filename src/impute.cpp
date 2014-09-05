@@ -5,8 +5,8 @@ int main(int argc,char **argv){
 
   
 
-  cout << "Maximum value for int:  " << numeric_limits<int>::max() << '\n';
-  cout << "Maximum value for long: " << numeric_limits<long>::max() << '\n';
+  //cout << "Maximum value for int:  " << numeric_limits<int>::max() << '\n';
+  //cout << "Maximum value for long: " << numeric_limits<long>::max() << '\n';
 
   matvec::UniformDist u;
   matvec::NormalDist Z;
@@ -177,7 +177,7 @@ int main(int argc,char **argv){
 
   //Estimation
   int nComb=HMM.nComb;
-  int nIter=10;
+  int nIter=0;
   vector<double> pVec(nComb);
 
   for(int iter=0;iter<nIter;iter++){
@@ -310,7 +310,7 @@ int main(int argc,char **argv){
    
   }
 
-  HMM.write(hmmFileName);
+  if(nIter) HMM.write(hmmFileName);
   
   //
   // MCMC
@@ -324,10 +324,10 @@ int main(int argc,char **argv){
   //double sig2bPrior=.5,sig2ePrior=20;
   double sig2bPrior=.05,sig2ePrior=5;
   double pi=.99,mu=0;
-  int nSamples=41000;
-  int nBurnIn=1000;
+  int nSamples=4100;
+  int nBurnIn=100;
   int FreqToSampleHaplo=100; 
-  int outputFreq=40;
+  int outputFreq=4;
 
   double nusig2e=10,nusig2b=4;
   double sig2e=sig2ePrior,sig2b=sig2bPrior,sig2g;
@@ -363,6 +363,24 @@ int main(int argc,char **argv){
   QTLResults << endl;
   gHatResults << "ID\tgHat"<< endl;
   vector<double> logPHaplo(nPheno);
+
+  vector<int> dVec(nStates,0),deltaZero(nStates,0);
+  vector<vector<int> > deltaStates;
+  int s;
+  do{
+    for(s=0;s<nStates && dVec[s]==1;s++){
+      dVec[s]=0;
+    }
+    if(s<nStates) {
+      dVec[s]=1;
+      for(int i=0;i<nStates;i++) cout << dVec[i] << " ";
+      cout << endl;
+      deltaStates.push_back(dVec);
+    }
+  }while(s<nStates);
+  deltaStates.pop_back(); // Drop all out and all in
+
+
   for(int s=0;s<nSamples;s++){
 
     //
@@ -479,94 +497,133 @@ int main(int argc,char **argv){
       int nowActive=0;
       double logAoverI=log((1.-pi)/pi);
       double b=qtlVec[i].b;
+      vector<double> rhsV,lhsV,lhsVs;
+      rhsV.assign(nStates,0.0);
+      lhsV.assign(nComb,0.0);
+      lhsVs.assign(nStates,0.0);
       for(int a=0;a<nPheno;a++){
-	int seq=phenSeq[a];
+	//double ydev=yDev[a];
+	//int seq=phenSeq[a];
 	int seqClass=XHaplo[i][a];
 	int I=HMM.stateI[seqClass];
 	int J=HMM.stateJ[seqClass];
-  	xVec[a]=(qtlVec[i].delta[I]+qtlVec[i].delta[J]);
-	double xb=xVec[a]*b;
-	if(active)  yDev[a]+=xb;
-	logAoverI+=(2.*yDev[a]-xb)*xb*rinverse[a]/(2.*sig2e);
-	
-      }
-      uSmp=u.sample();
-      if(log(uSmp/(1.-uSmp))<logAoverI) nowActive=1; 
-      double bDelta=0;
-      qtlVec[i].active=nowActive;
-      if(nowActive) activeLoci.push_back(i); 
-      double sumXY,sumXX;
-      sumXY=0;
-      sumXX=sig2e/sig2b;
-      if(nowActive){
-	for(int a=0;a<nPheno;a++){
-	  double x=xVec[a];
-	  sumXY+=x*yDev[a]*rinverse[a];
-	  sumXX+=rinverse[a]*x*x;
+	if(active){
+	  double xb=(qtlVec[i].delta[I]+qtlVec[i].delta[J])*b;
+	  yDev[a]+=xb;
 	}
-      }
-      b=sumXY/sumXX+Z.sample()*sqrt(sig2e/sumXX); //sample b
-     
-      qtlVec[i].b=b;
-      //
-      // Now sample delta
-      //
-      vector<double> logPdelta(nComb,0.0);
+	rhsV[I]+=yDev[a]*rinverse[a];
+	rhsV[J]+=yDev[a]*rinverse[a];
 
-      if(nowActive) {
-	ssb+=b*b;	
-	for(int a=0;a<nPheno;a++){
-	  int seq=phenSeq[a];
-	  int seqClass=XHaplo[i][a];
-	  int I=HMM.stateI[seqClass];
-	  int J=HMM.stateJ[seqClass];
-	  logPdelta[I*(I+1)/2+J]-=b*b*rinverse[a]/(2.*sig2e);
-	  logPdelta[I*(I+1)/2+I]+=(2.*yDev[a]*b-b*b)*rinverse[a]/(2.*sig2e);
-	  logPdelta[J*(J+1)/2+J]+=(2.*yDev[a]*b-b*b)*rinverse[a]/(2.*sig2e);
+	lhsVs[I]+=rinverse[a];
+	lhsVs[J]+=rinverse[a];
+
+	lhsV[seqClass]+=2.0*rinverse[a];
+      }
+      int nDeltaStates=deltaStates.size();
+      double psum=1.;
+      vector<double> AoverIVec(nDeltaStates,log((1.-pi)/pi)-.5*log(sig2b)-log((double) nDeltaStates));
+      for(int sd=0;sd<nDeltaStates;sd++){
+	double lhs=sig2e/sig2b;
+	double rhs=0;
+	dVec=deltaStates[sd];
+	int IJ=0;
+	for(int I=0;I<nStates;I++){
+	  if(dVec[I]){
+	    rhs+=rhsV[I];
+	    lhs+=lhsVs[I];
+	  }
+	  for(int J=0;J<=I;J++,IJ++){
+	    if(dVec[I] && dVec[J]) lhs+=lhsV[IJ];      
+	  }
 	}
+	rhs/=sig2e;
+	lhs/=sig2e;
+	AoverIVec[sd]+=0.5*(rhs*rhs/lhs-log(lhs));
+	AoverIVec[sd]=exp(AoverIVec[sd]);
+	psum+=AoverIVec[sd];
       }
 
-      vector<int> deltaNew(nStates,0);
-      vector<int> deltaOld=qtlVec[i].delta;
-      for(int l=0;l<nStates;l++){
-	if(u.sample()<flipDelta) deltaNew[l]=1-deltaOld[l];  
-      }
-      double logSwitch=0;
-      for(int I=0;I<nStates;I++){
-	for(int J=0;J<=I;J++){
-	  int l=I*(I+1)/2+J;
-	  logSwitch+=logPdelta[l]*(deltaNew[I]*deltaNew[J]-deltaOld[I]*deltaOld[J]);
-	}
-      }
-      uSmp=u.sample();
-      if(log(uSmp/(1.-uSmp))<logSwitch)qtlVec[i].delta=deltaNew;
       
 
-      if(nowActive){
-	if(s>=nBurnIn)qtlSumVec[i].updateSum(qtlVec[i]);
+      uSmp=u.sample();
+      uSmp*=psum;
 
+
+      if(uSmp<1.){
+	qtlVec[i].active=0;
+	qtlVec[i].b=0;
+	qtlVec[i].delta=deltaZero;
+      }
+      else{
+	qtlVec[i].active=1;
+	activeLoci.push_back(i);
+	uSmp-=1.;
+
+	//nowActive=1;
+	
+	
+	
+	//
+	// Sample Delta
+	//
+	int sd;
+	for(sd=0; uSmp>AoverIVec[sd]   && sd<nDeltaStates ;sd++){
+	  uSmp-=AoverIVec[sd];
+	}
+	if(sd==nDeltaStates) {
+	  cout <<"Delta Sampler Failed!!!"<< uSmp <<   " " << AoverIVec[sd-1] << endl;
+	  exit(1);
+	}
+	dVec=deltaStates[sd];
+	qtlVec[i].delta=dVec;
+	double sumXY,sumXX;
+	sumXY=0;
+	sumXX=sig2e/sig2b;
+	int IJ=0;
+	for(int I=0;I<nStates;I++){
+	  if(dVec[I]) {
+	    sumXY+=rhsV[I];
+	    sumXX+=lhsVs[I];
+	  }
+	  for(int J=0;J<=I;J++,IJ++){
+	    if(dVec[I]&& dVec[J]) sumXX+=lhsV[IJ];
+	  }
+	}
+	
+	b=sumXY/sumXX+Z.sample()*sqrt(sig2e/sumXX); //sample b
+	
+	qtlVec[i].b=b;
+	ssb+=b*b;
 	for(int a=0;a<nPheno;a++){
-	  int seq=phenSeq[a];
+	  //int seq=phenSeq[a];
 	  int seqClass=XHaplo[i][a];
 	  int I=HMM.stateI[seqClass];
 	  int J=HMM.stateJ[seqClass];
-	  yDev[a]-=(qtlVec[i].delta[I]+qtlVec[i].delta[J])*b;
-	  gHat[a]+=(qtlVec[i].delta[I]+qtlVec[i].delta[J])*b;
+	  yDev[a]-=(dVec[I]+dVec[J])*b;
+	  gHat[a]+=(dVec[I]+dVec[J])*b;
 	}
+	if(s>=nBurnIn)qtlSumVec[i].updateSum(qtlVec[i]);
       }
+      //if(qtlVec[i].active && !nowActive) cout << "Switch locus "<< i << " " << qtlVec[i].active << "=>" << nowActive << endl;
+
+    
+     
+    
+    
+   
     }
     //update mu;
     double sumXY=0,sumXX=0;
     for(int a=0;a<nPheno;a++){
-      sumXY+=rinverse[a]*(yDev[a]+mu);
+      sumXY+=rinverse[a]*yDev[a];
       sumXX+=rinverse[a];
     }
-    double newMu=sumXY/sumXX+Z.sample()*sqrt(sig2e/sumXX);
-    for(int a=0;a<nPheno;a++) yDev[a]-=newMu-mu;
-    mu=newMu;
+    double deltaMu=sumXY/sumXX+Z.sample()*sqrt(sig2e/sumXX);
+    for(int a=0;a<nPheno;a++) yDev[a]-=deltaMu;
+    mu+=deltaMu;
 
     //Calc sig2g
-    
+    ssg=0;
     for(int a=0;a<nPheno;a++) ssg+=gHat[a]*gHat[a];
     sig2g=ssg/((double) nPheno);
 
@@ -782,3 +839,4 @@ int hmm::read(const string &filename){
 
 
  
+
