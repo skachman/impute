@@ -379,14 +379,20 @@ int main(int argc,char **argv){
     }
   }while(s<nStates);
   deltaStates.pop_back(); // Drop all out and all in
-
-
+  int computeLhsV=1;
+  vector<double> rhsV,lhsV,lhsVs;
+  rhsV.assign(nStates,0.0);
+  lhsV.assign(nComb,0.0);
+  lhsVs.assign(nStates,0.0);
+  vector<vector<double> > lhsVArray(nLoci,lhsV),lhsVsArray(nLoci,lhsVs);
+  
   for(int s=0;s<nSamples;s++){
 
     //
     // Fill in HaploVec
     //
     if((s%FreqToSampleHaplo)==0){
+      computeLhsV=1;
       int nFlipped=0;
       vector<int> XHaploNew(nLoci);
       for(int a=0;a<nPheno;a++){
@@ -497,10 +503,16 @@ int main(int argc,char **argv){
       int nowActive=0;
       double logAoverI=log((1.-pi)/pi);
       double b=qtlVec[i].b;
-      vector<double> rhsV,lhsV,lhsVs;
+      
       rhsV.assign(nStates,0.0);
-      lhsV.assign(nComb,0.0);
-      lhsVs.assign(nStates,0.0);
+      if(computeLhsV){
+	lhsV.assign(nComb,0.0);
+	lhsVs.assign(nStates,0.0);
+      }
+      else{
+	lhsV=lhsVArray[i];
+	lhsVs=lhsVsArray[i];
+      }
       for(int a=0;a<nPheno;a++){
 	//double ydev=yDev[a];
 	//int seq=phenSeq[a];
@@ -513,12 +525,17 @@ int main(int argc,char **argv){
 	}
 	rhsV[I]+=yDev[a]*rinverse[a];
 	rhsV[J]+=yDev[a]*rinverse[a];
-
-	lhsVs[I]+=rinverse[a];
-	lhsVs[J]+=rinverse[a];
-
-	lhsV[seqClass]+=2.0*rinverse[a];
+	if(computeLhsV){
+	  lhsVs[I]+=rinverse[a];
+	  lhsVs[J]+=rinverse[a];
+	  lhsV[seqClass]+=2.0*rinverse[a];
+	}
       }
+      if(computeLhsV){
+	lhsVArray[i]=lhsV;
+	lhsVsArray[i]=lhsVs;
+      }
+
       int nDeltaStates=deltaStates.size();
       double psum=1.;
       vector<double> AoverIVec(nDeltaStates,log((1.-pi)/pi)-.5*log(sig2b)-log((double) nDeltaStates));
@@ -612,6 +629,7 @@ int main(int argc,char **argv){
     
    
     }
+    computeLhsV=0;
     //update mu;
     double sumXY=0,sumXX=0;
     for(int a=0;a<nPheno;a++){
