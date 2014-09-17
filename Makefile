@@ -44,14 +44,14 @@ OBJECTS_DIR   =  obj/
 
 ####### Files
 
-SOURCES       = $(SRC_DIR)impute.cpp
+SOURCES       = $(SRC_DIR)impute.cpp  
 
 
 OBJECTS       = $(OBJECTS_DIR)impute.o	
 
 DESTDIR       = 
 
-TARGET        = bin/impute
+TARGET        = bin/impute 
 
 first: all
 ####### Implicit rules
@@ -75,10 +75,13 @@ first: all
 
 ####### Build rules
 
-all: Makefile $(TARGET)
+all: Makefile $(TARGET) bin/imputeMCMC
 
 $(TARGET):  $(OBJECTS)  
 	$(LINK) $(LFLAGS) -o $(TARGET) $(OBJECTS) $(OBJCOMP) $(LIBS)
+
+bin/imputeMCMC:   $(OBJECTS_DIR)imputeMCMC.o	 
+	$(LINK) $(LFLAGS) -o bin/imputeMCMC  $(OBJECTS_DIR)imputeMCMC.o $(OBJCOMP) $(LIBS)
 
 dist: 
 	@$(CHK_DIR_EXISTS) obj/GenSel1.0.0 || $(MKDIR) obj/GenSel1.0.0 
@@ -130,6 +133,9 @@ compiler_clean:
 
 $(OBJECTS_DIR)impute.o: $(SRC_DIR)impute.cpp $(HEADER_DIR)impute.h
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o $(OBJECTS_DIR)impute.o $(SRC_DIR)impute.cpp
+
+$(OBJECTS_DIR)imputeMCMC.o: $(SRC_DIR)imputeMCMC.cpp $(HEADER_DIR)impute.h
+	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o $(OBJECTS_DIR)imputeMCMC.o $(SRC_DIR)imputeMCMC.cpp
 
 
 

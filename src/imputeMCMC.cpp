@@ -24,7 +24,7 @@ int main(int argc,char **argv){
 
   vector<string > ID;
   double val;
-  int iVal; 
+  int iVal;
   unsigned seed=3434241;
   seed=(unsigned int) time(NULL);
   DIR *dirPtr = opendir("matvec_trash");
@@ -323,11 +323,13 @@ int main(int argc,char **argv){
 
   //double sig2bPrior=.5,sig2ePrior=20;
   double sig2bPrior=.05,sig2ePrior=5;
-  double pi=.99,mu=0;
-  int nSamples=4100;
-  int nBurnIn=100;
-  int FreqToSampleHaplo=100; 
-  int outputFreq=4;
+  double pi=.99,mu=0,inactiveProposal=0.9;
+  
+  int nSamples=8100;
+  int nBurnIn=200;
+  int FreqToSampleHaplo=200; 
+  int printFreq=10;
+  int outputFreq=8;
 
   double nusig2e=10,nusig2b=4;
   double sig2e=sig2ePrior,sig2b=sig2bPrior,sig2g;
@@ -336,12 +338,15 @@ int main(int argc,char **argv){
   double nuTilde,uSmp;
   double flipDelta=1./((double) nStates);
   vector<qtlLocus> qtlVec,qtlSumVec;
+  vector<int> windowSumVec,windowVec;
   vector<long> activeLoci;
   long activePos=0;
   uSmp=u.sample();
 
   qtlVec.resize(nLoci);
   qtlSumVec.resize(nLoci);
+  windowSumVec.assign(nLoci,0);
+  windowVec.resize(nLoci);
   activeLoci.resize(0);
   for(long i=0;i<nLoci;i++) {
     qtlVec[i].init(nStates,sig2b,pi);
@@ -356,7 +361,7 @@ int main(int argc,char **argv){
   vector<double> yDev(nPheno),gHat(nPheno),gHatSum(nPheno,0.0),xVec(nPheno),probClass(nComb);
   
   MCMCSamples << "Sample\tmu\tsig2b\tsig2e\tsig2g" << endl;
-  QTLResults << "Loci\tName\tChrom\tPos\tmodelFreq\tb";
+  QTLResults << "Loci\tName\tChrom\tPos\tmodelFreq\tb\twindowFreq";
   for(int l=0;l<nStates;l++) QTLResults << "\tDelta" << l ;
   for(int l=0;l<nStates;l++) QTLResults << "\thaploFreq" << l ;
   for(int l=0;l<nStates;l++) QTLResults << "\thaploTemplate" << l ;
@@ -498,9 +503,13 @@ int main(int argc,char **argv){
     }
 
     activeLoci.resize(0);
+    int nRejectI2A=0;
+    int nRejectA2I=0;
     for(long i=0;i<nLoci;i++){
       int active=qtlVec[i].active;
       int nowActive=0;
+      int proposeActive=0;
+      
       double logAoverI=log((1.-pi)/pi);
       double b=qtlVec[i].b;
       
@@ -513,122 +522,148 @@ int main(int argc,char **argv){
 	lhsV=lhsVArray[i];
 	lhsVs=lhsVsArray[i];
       }
-      for(int a=0;a<nPheno;a++){
-	//double ydev=yDev[a];
-	//int seq=phenSeq[a];
-	int seqClass=XHaplo[i][a];
-	int I=HMM.stateI[seqClass];
-	int J=HMM.stateJ[seqClass];
-	if(active){
-	  double xb=(qtlVec[i].delta[I]+qtlVec[i].delta[J])*b;
-	  yDev[a]+=xb;
-	}
-	rhsV[I]+=yDev[a]*rinverse[a];
-	rhsV[J]+=yDev[a]*rinverse[a];
-	if(computeLhsV){
-	  lhsVs[I]+=rinverse[a];
-	  lhsVs[J]+=rinverse[a];
-	  lhsV[seqClass]+=2.0*rinverse[a];
-	}
-      }
-      if(computeLhsV){
-	lhsVArray[i]=lhsV;
-	lhsVsArray[i]=lhsVs;
-      }
-
-      int nDeltaStates=deltaStates.size();
-      double psum=1.;
-      vector<double> AoverIVec(nDeltaStates,log((1.-pi)/pi)-.5*log(sig2b)-log((double) nDeltaStates));
-      for(int sd=0;sd<nDeltaStates;sd++){
-	double lhs=sig2e/sig2b;
-	double rhs=0;
-	dVec=deltaStates[sd];
-	int IJ=0;
-	for(int I=0;I<nStates;I++){
-	  if(dVec[I]){
-	    rhs+=rhsV[I];
-	    lhs+=lhsVs[I];
-	  }
-	  for(int J=0;J<=I;J++,IJ++){
-	    if(dVec[I] && dVec[J]) lhs+=lhsV[IJ];      
-	  }
-	}
-	rhs/=sig2e;
-	lhs/=sig2e;
-	AoverIVec[sd]+=0.5*(rhs*rhs/lhs-log(lhs));
-	AoverIVec[sd]=exp(AoverIVec[sd]);
-	psum+=AoverIVec[sd];
-      }
-
-      
-
       uSmp=u.sample();
-      uSmp*=psum;
-
-
-      if(uSmp<1.){
-	qtlVec[i].active=0;
-	qtlVec[i].b=0;
-	qtlVec[i].delta=deltaZero;
-      }
-      else{
-	qtlVec[i].active=1;
-	activeLoci.push_back(i);
-	uSmp-=1.;
-
-	//nowActive=1;
-	
-	
-	
-	//
-	// Sample Delta
-	//
-	int sd;
-	for(sd=0; uSmp>AoverIVec[sd]   && sd<nDeltaStates ;sd++){
-	  uSmp-=AoverIVec[sd];
-	}
-	if(sd==nDeltaStates) {
-	  cout <<"Delta Sampler Failed!!!"<< uSmp <<   " " << AoverIVec[sd-1] << endl;
-	  exit(1);
-	}
-	dVec=deltaStates[sd];
-	qtlVec[i].delta=dVec;
-	double sumXY,sumXX;
-	sumXY=0;
-	sumXX=sig2e/sig2b;
-	int IJ=0;
-	for(int I=0;I<nStates;I++){
-	  if(dVec[I]) {
-	    sumXY+=rhsV[I];
-	    sumXX+=lhsVs[I];
-	  }
-	  for(int J=0;J<=I;J++,IJ++){
-	    if(dVec[I]&& dVec[J]) sumXX+=lhsV[IJ];
-	  }
-	}
-	
-	b=sumXY/sumXX+Z.sample()*sqrt(sig2e/sumXX); //sample b
-	
-	qtlVec[i].b=b;
-	ssb+=b*b;
+      if(uSmp>inactiveProposal) proposeActive=1;
+      if(proposeActive || active || computeLhsV){
 	for(int a=0;a<nPheno;a++){
+	  //double ydev=yDev[a];
 	  //int seq=phenSeq[a];
 	  int seqClass=XHaplo[i][a];
 	  int I=HMM.stateI[seqClass];
 	  int J=HMM.stateJ[seqClass];
-	  yDev[a]-=(dVec[I]+dVec[J])*b;
-	  gHat[a]+=(dVec[I]+dVec[J])*b;
+	  if(active){
+	    double xb=(qtlVec[i].delta[I]+qtlVec[i].delta[J])*b;
+	    yDev[a]+=xb;
+	  }
+	  rhsV[I]+=yDev[a]*rinverse[a];
+	  rhsV[J]+=yDev[a]*rinverse[a];
+	  if(computeLhsV){
+	    lhsVs[I]+=rinverse[a];
+	    lhsVs[J]+=rinverse[a];
+	    lhsV[seqClass]+=2.0*rinverse[a];
+	  }
 	}
-	if(s>=nBurnIn)qtlSumVec[i].updateSum(qtlVec[i]);
+	if(computeLhsV){
+	  lhsVArray[i]=lhsV;
+	  lhsVsArray[i]=lhsVs;
+	}
       }
-      //if(qtlVec[i].active && !nowActive) cout << "Switch locus "<< i << " " << qtlVec[i].active << "=>" << nowActive << endl;
-
-    
+      if(active || proposeActive){
+	int nDeltaStates=deltaStates.size();
+	double psum=1.;
+	vector<double> AoverIVec(nDeltaStates,log((1.-pi)/pi)-.5*log(sig2b)-log((double) nDeltaStates));
+	for(int sd=0;sd<nDeltaStates;sd++){
+	  double lhs=sig2e/sig2b;
+	  double rhs=0;
+	  dVec=deltaStates[sd];
+	  int IJ=0;
+	  for(int I=0;I<nStates;I++){
+	    if(dVec[I]){
+	      rhs+=rhsV[I];
+	      lhs+=lhsVs[I];
+	    }
+	    for(int J=0;J<=I;J++,IJ++){
+	      if(dVec[I] && dVec[J]) lhs+=lhsV[IJ];      
+	    }
+	  }
+	  rhs/=sig2e;
+	  lhs/=sig2e;
+	  AoverIVec[sd]+=0.5*(rhs*rhs/lhs-log(lhs));
+	  AoverIVec[sd]=exp(AoverIVec[sd]);
+	  psum+=AoverIVec[sd];
+	}
      
-    
-    
-   
+      
+
+	int accept=0;
+	if(proposeActive && active) accept=1;
+	else{
+	  if(proposeActive && u.sample() < (1.-1./psum)/(1-inactiveProposal)){
+	    accept=1;
+	  }
+	  if(active && u.sample() < (1.-inactiveProposal)/(1.-1./psum)){
+	    accept=1;
+	  }
+	}
+	if(!accept) {
+	  if(active) nRejectA2I++;
+	  else nRejectI2A++;
+	}
+	if(accept || active){	
+	  
+	  
+	  if(accept && !proposeActive){
+	    qtlVec[i].active=0;
+	    qtlVec[i].b=0;
+	    qtlVec[i].delta=deltaZero;
+	  }
+	  else{
+	    
+	    uSmp=u.sample();
+	    uSmp*=psum-1.;
+	    qtlVec[i].active=1;
+	    activeLoci.push_back(i);
+	    //uSmp-=1.;
+	    
+	    nowActive=1;
+	    
+	    
+	    
+	    //
+	    // Sample Delta
+	    //
+	    int sd;
+	    for(sd=0; uSmp>AoverIVec[sd]   && sd<nDeltaStates ;sd++){
+		uSmp-=AoverIVec[sd];
+	      }
+	    if(sd==nDeltaStates) {
+	      cout <<"Delta Sampler Failed!!!"<< uSmp <<   " " << AoverIVec[sd-1] << endl;
+	      exit(1);
+	    }
+	    dVec=deltaStates[sd];
+	    qtlVec[i].delta=dVec;
+	    double sumXY,sumXX;
+	    sumXY=0;
+	    sumXX=sig2e/sig2b;
+	    int IJ=0;
+	    for(int I=0;I<nStates;I++){
+	      if(dVec[I]) {
+		sumXY+=rhsV[I];
+		sumXX+=lhsVs[I];
+	      }
+	      for(int J=0;J<=I;J++,IJ++){
+		if(dVec[I]&& dVec[J]) sumXX+=lhsV[IJ];
+	      }
+	    }
+	    
+	    b=sumXY/sumXX+Z.sample()*sqrt(sig2e/sumXX); //sample b
+	    
+	    qtlVec[i].b=b;
+	    ssb+=b*b;
+	    for(int a=0;a<nPheno;a++){
+	      //int seq=phenSeq[a];
+	      int seqClass=XHaplo[i][a];
+	      int I=HMM.stateI[seqClass];
+	      int J=HMM.stateJ[seqClass];
+	      yDev[a]-=(dVec[I]+dVec[J])*b;
+	      gHat[a]+=(dVec[I]+dVec[J])*b;
+	    }
+	    
+	  }
+	}
+      }
+      
+      //if(qtlVec[i].active && !nowActive) cout << "Switch locus "<< i << " " << qtlVec[i].active << "=>" << nowActive << endl;
+      
+      if(qtlVec[i].active){
+	
+      }
+      
+      if(s>=nBurnIn)qtlSumVec[i].updateSum(qtlVec[i]);
+      
     }
+    
+    
     computeLhsV=0;
     //update mu;
     double sumXY=0,sumXX=0;
@@ -642,18 +677,18 @@ int main(int argc,char **argv){
 
     //Calc sig2g
     ssg=0;
-    double sumg=0.;
-    for(int a=0;a<nPheno;a++){
+    double sumg=0;
+    for(int a=0;a<nPheno;a++) {
       ssg+=gHat[a]*gHat[a];
       sumg+=gHat[a];
     }
     sumg/=(double) nPheno;
-    sig2g=ssg/((double) nPheno)-sumg*sumg;
+    sig2g=ssg/((double) nPheno)-(sumg*sumg);
 
     //update gHatSum
     if(s>=nBurnIn){
       for(int a=0;a<nPheno;a++) {
-	gHatSum[a]+=gHat[a]-sumg;
+	gHatSum[a]+=gHat[a];
       }
     }
 
@@ -671,17 +706,36 @@ int main(int argc,char **argv){
     nuTilde=((double) nQTL)+nusig2b;
     X2=2.*matvec::sgamma(nuTilde/2.0); //Chi-square;
     sig2b=ssb/X2;
-    cout << endl;
-    cout << "Sample: " << s << endl;
-    cout << setprecision(5) << "Sig2b: " << sig2b << " Sig2e: " << sig2e << " Sig2g: " << sig2g << endl;
-    cout << "mu " << mu << endl;
-    cout << "number Active: " <<  nQTL << endl;
-    for(int i=0; i< 100  ; i++ ) {
-      cout  << " " <<setw(7) << activeLoci[i];
-      if((i %10)==9) cout <<endl;
+    if(s>=nBurnIn){
+      windowVec.assign(nLoci,0);
+      for(int chr=0;chr<nChrom;chr++){
+	for(int i=chromStart[chr];i<chromStart[chr+1];i++){
+	  if(qtlVec[i].active){
+	    int start=max(chromStart[chr],i-5);
+	    int end=min(chromStart[chr+1]-1,i+5);
+	    for(int j=start;j<=end;j++) windowVec[j]=1;
+	  }
+	}
+      }
+      for(int i=0;i<nLoci;i++) {
+	if(windowVec[i]) windowSumVec[i]++;
+      }
     }
-    cout << endl <<endl;
-    if(s%outputFreq==0) MCMCSamples << s << "\t" << mu+sumg <<"\t" << sig2b << "\t" <<sig2e <<"\t" << sig2g << endl; 
+  
+
+    if((s % printFreq)==0){
+      cout << endl;
+      cout << "Sample: " << s << endl;
+      cout << setprecision(8) << "Sig2b: " << sig2b << " Sig2e: " << sig2e << " Sig2g: " << sig2g << endl;
+      cout << "mu " << mu << endl;
+      cout << "number Active: " <<  nQTL << " Number Rejected A2I: " << nRejectA2I<< " Number Rejected I2A: " << nRejectI2A << endl;
+      for(int i=0; i< 100  ; i++ ) {
+	cout  << " " << setw(6) << activeLoci[i];
+	if((i %10)==9) cout <<endl;
+      }
+      cout << endl <<endl;
+      if(s%outputFreq==0) MCMCSamples << s << "\t" << mu+sumg <<"\t" << sig2b << "\t" <<sig2e <<"\t" << sig2g << endl; 
+    }
   }
   double numSampled;
   numSampled=(double)(nSamples-nBurnIn);
@@ -689,7 +743,7 @@ int main(int argc,char **argv){
     double numActive=1;
     if(qtlSumVec[i].active) numActive=(double) qtlSumVec[i].active;
     
-    QTLResults << i << "\t" << lociMap[i].name << "\t" << lociMap[i].chrom << "\t"<< lociMap[i].pos<<"\t"<< ((double) qtlSumVec[i].active)/numSampled << "\t" << qtlSumVec[i].b/numSampled;
+    QTLResults << i << "\t" << lociMap[i].name << "\t" << lociMap[i].chrom << "\t"<< lociMap[i].pos<<"\t"<< ((double) qtlSumVec[i].active)/numSampled << "\t" << qtlSumVec[i].b/numSampled << "\t" << ((double) windowSumVec[i])/numSampled;
     for(int l=0;l<nStates;l++) QTLResults << "\t" <<  2.*((double) qtlSumVec[i].delta[l])/numActive-1.;
     for(int l=0;l<nStates;l++) QTLResults << "\t" <<HMM.loci[i].pState[l]/(2.*(nSeq+priorCount));
     for(int l=0;l<nStates;l++) QTLResults << "\t" <<HMM.loci[i].e[l];
