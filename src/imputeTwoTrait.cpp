@@ -1,6 +1,7 @@
 #include "impute.h"
 #include <limits.h>
 
+
 int main(int argc,char **argv){
 
   
@@ -26,7 +27,7 @@ int main(int argc,char **argv){
   double val;
   int iVal;
   unsigned seed=3434241;
-  seed =(unsigned)(time(NULL));
+  seed=(unsigned int) time(NULL);
   DIR *dirPtr = opendir("matvec_trash");
         if (!dirPtr){
                 umask(0);
@@ -62,23 +63,6 @@ int main(int argc,char **argv){
   }
   chromStart.push_back(lociMap.size());
   int nChrom=chromStart.size()-1;
-
-  for(int chr=0;chr<nChrom;chr++){
-    for(long i=chromStart[chr];i<chromStart[chr+1];i++){
-      for(int j=i;j>=chromStart[chr] && lociMap[j].pos>lociMap[i].pos-500*1000 ; j--){
-	lociMap[i].start=j;
-      }
-
-      for(int j=i;j<chromStart[chr+1] && lociMap[j].pos<lociMap[i].pos+500*1000 ; j++){
-	lociMap[i].stop=j;
-      }
-    }
-  }
-
-  for(int i=0;i<lociMap.size();i+=1000){
-    cout<< i << " " << lociMap[i].start << " " << lociMap[i].stop << endl;
-  }
-
   for(int chr=0;chr<nChrom;chr++) cout << chromStart[chr] << " ";
   cout << endl;
 
@@ -131,7 +115,9 @@ int main(int argc,char **argv){
   filename="BWT.dat";
   Pheno.open(filename);
   getline(Pheno,line);
-  vector<double> y,Xmu,rinverse;
+  vector<double> Xmu,rinverse,yObs;
+  yObs.resize(2);
+  vector<Vector2f> y;
   vector<int> phenSeq;
   vector<string> phenID;
   int notFound=0;
@@ -142,8 +128,9 @@ int main(int argc,char **argv){
     if(seqMapIt != seqMap.end()){
       phenID.push_back(id);
       phenSeq.push_back(seqMapIt->second);
-      linestream >> val;
-      y.push_back(val);
+      linestream >> yObs[0];
+      linestream >> yObs[1];
+      y.push_back(yObs);
       linestream >> val;
       Xmu.push_back(val);
       linestream >> val;
@@ -155,7 +142,7 @@ int main(int argc,char **argv){
 
   cout << "Matched Phenotypes "<< nPheno  << endl;
   for(int i=0;i< 10;i++){
-    cout << phenSeq[i] << " " << ID[phenSeq[i]] << " " << y[i] << " " << Xmu[i] << " " << rinverse[i] << endl;
+    cout << phenSeq[i] << " " << ID[phenSeq[i]] << " " << y[i][0] << " " << y[i][1] << " " << Xmu[i] << " " << rinverse[i] << endl;
   }
 
   int nStates=4;
@@ -339,27 +326,37 @@ int main(int argc,char **argv){
   gHatResults.open("gHatResults.txt");
 
   //double sig2bPrior=.5,sig2ePrior=20;
-  double sig2bPrior=.05,sig2ePrior=5;
-  double pi=.99,mu=0,inactiveProposal=0.9;
+  Matrix2d sig2bPrior,sig2ePrior;
+  sig2bPrior<< .5,0,
+    0,.5;
+
+  sig2ePrior<< 20, 0.
+    0 ,20;
+
+  //double sig2bPrior=.05,sig2ePrior=5;
+  double pi=.99,inactiveProposal=0.9;
+  Vector2d mu;
+  me << 0,0;
   
-  int nSamples=81000;
-  int nBurnIn=2000;
+  int nSamples=8100;
+  int nBurnIn=200;
   int FreqToSampleHaplo=200; 
   int printFreq=10;
   int outputFreq=8;
-  int windowSize=10;  //windowWidth=2*windowSize+1
 
   double nusig2e=10,nusig2b=4;
-  double sig2e=sig2ePrior,sig2b=sig2bPrior,sig2g;
-  double scaleRes=sig2ePrior*(nusig2e-2.);
-  double scaleB=sig2bPrior*(nusig2b-2.);
+  matrix2d sig2e=sig2ePrior,sig2b=sig2bPrior,sig2g;  
+  double scaleRes=sig2ePrior*(nusig2e-3.); 
+  double scaleB=sig2bPrior*(nusig2b-3.);
   double nuTilde,uSmp;
   double flipDelta=1./((double) nStates);
-  vector<qtlLocus> qtlVec,qtlSumVec;
+  vector<qtl2Locus> qtlVec,qtlSumVec;
   vector<int> windowSumVec,windowVec;
   vector<long> activeLoci;
   long activePos=0;
   uSmp=u.sample();
+  
+  Matrix2d bL=sig2b.llt().matrixL();
 
   qtlVec.resize(nLoci);
   qtlSumVec.resize(nLoci);
@@ -410,7 +407,8 @@ int main(int argc,char **argv){
   vector<vector<double> > lhsVArray(nLoci,lhsV),lhsVsArray(nLoci,lhsVs);
   
   for(int s=0;s<nSamples;s++){
-
+    Matrix2d rInverse=sig2e.inverse(); 
+    Matrix2d bInverse=sig2b.inverse(); 
     //
     // Fill in HaploVec
     //
@@ -465,7 +463,7 @@ int main(int argc,char **argv){
 	  XHaploNew[i]=ranClass;
 	  logPNewvsOld+=log(Pvec[ranClass]);
 	}
-	double yDevNew=y[a]-mu;
+	Vector2d yDevNew=y[a]-mu;
 	for(long i=0;i<nQTL;i++){
 	  long locus=activeLoci[i];
 	  int l=XHaploNew[locus];
@@ -729,8 +727,8 @@ int main(int argc,char **argv){
       for(int chr=0;chr<nChrom;chr++){
 	for(int i=chromStart[chr];i<chromStart[chr+1];i++){
 	  if(qtlVec[i].active){
-	    int start=lociMap[i].start;
-	    int end=lociMap[i].stop;
+	    int start=max(chromStart[chr],i-5);
+	    int end=min(chromStart[chr+1]-1,i+5);
 	    for(int j=start;j<=end;j++) windowVec[j]=1;
 	  }
 	}
@@ -813,6 +811,27 @@ void qtlLocus::init(int ns,double sig2b,double pi){
   }
   active=0;
   if(u.sample()>pi) active=1;
+}
+void qtl2Locus::init(int ns,Matix2d bL,double pi,double rho){
+  matvec::UniformDist u;
+  
+  delta.assign(ns,0);
+  
+  active=0;
+  if(u.sample()>pi) {
+    active=1;
+    Vector2d Z;
+    Z << snorm(),snorm();
+    b=bL*Z;
+    for(int i=0;i<ns;i++) {
+      if(u.sample() < .5) delta[i]=1;
+      activeTrait.assign(2,1);
+      if(u.sample() > rho) {
+	if(u.sample <0.5) activeTrait[0]=0;
+	else actitveTrait[1]=0;
+      }
+    }
+  }
 }
 
 

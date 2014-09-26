@@ -15,15 +15,20 @@
 #include <dirent.h>
 #include <cmath>
 
+#include <Eigen/Dense>
+
+
 
 
 using namespace std;
+
+using namespace Eigen;
 
 class locusMap{
  public:
   string name;
   int chrom;
-  long pos;
+  long pos,start,stop;
   locusMap(string s,int c, long p){name=s;chrom=c;pos=p;};
   locusMap(){};
   
@@ -40,6 +45,18 @@ class qtlLocus{
   void init(int nc,double sig2b,double pi);
   void init(int nc);
   void updateSum(const qtlLocus &A);
+};
+
+class qtl2Locus{
+ public:
+  Vector2d b;
+  vector<int> delta;
+  int active;
+  vector<int> activeTrait;
+  list<long> *activePos;
+  void init(int nc,Matrix2d bL,double pi,double rho);
+  void init(int nc);
+  void updateSum(const qtl2Locus &A);
 };
 
 class haploLocus{
