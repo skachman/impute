@@ -5,8 +5,8 @@ int main(int argc,char **argv){
 
   
 
-  //cout << "Maximum value for int:  " << numeric_limits<int>::max() << '\n';
-  //cout << "Maximum value for long: " << numeric_limits<long>::max() << '\n';
+  cout << "Maximum value for int:  " << numeric_limits<int>::max() << '\n';
+  cout << "Maximum value for long: " << numeric_limits<long>::max() << '\n';
 
   matvec::UniformDist u;
   matvec::NormalDist Z;
@@ -21,6 +21,7 @@ int main(int argc,char **argv){
   vector<vector<haploLocus> > haploProb;
   vector<locusMap> lociMap;
   locusMap aMapLocus;
+  int freqQTL=25*1000;
 
   vector<string > ID;
   double val;
@@ -48,37 +49,26 @@ int main(int argc,char **argv){
   sort(lociMap.begin(),lociMap.end(),locusMapCompare);
   map<string,long> mapOrder;
   for(long i=0;i<lociMap.size();i++) {
+    lociMap[i].isSNP=i;
+    lociMap[i].isQTL=-1;
     mapOrder[lociMap[i].name]=i;
   }
 
-  vector<int> chromStart;
+  vector<int> chromStart,Chrom;
   int lastChrom=lociMap[0].chrom;
+  Chrom.push_back(lastChrom);
   chromStart.push_back(0);
   for(long i=1;i<lociMap.size();i++){
     if(lastChrom!=lociMap[i].chrom){
       chromStart.push_back(i);
+      Chrom.push_back(lociMap[i].chrom);
       lastChrom=lociMap[i].chrom;
     }
   }
   chromStart.push_back(lociMap.size());
   int nChrom=chromStart.size()-1;
 
-  for(int chr=0;chr<nChrom;chr++){
-    for(long i=chromStart[chr];i<chromStart[chr+1];i++){
-      for(int j=i;j>=chromStart[chr] && lociMap[j].pos>lociMap[i].pos-500*1000 ; j--){
-	lociMap[i].start=j;
-      }
-
-      for(int j=i;j<chromStart[chr+1] && lociMap[j].pos<lociMap[i].pos+500*1000 ; j++){
-	lociMap[i].stop=j;
-      }
-    }
-  }
-
-  for(int i=0;i<lociMap.size();i+=1000){
-    cout<< i << " " << lociMap[i].start << " " << lociMap[i].stop << endl;
-  }
-
+  
   for(int chr=0;chr<nChrom;chr++) cout << chromStart[chr] << " ";
   cout << endl;
 
@@ -159,22 +149,28 @@ int main(int argc,char **argv){
   }
 
   int nStates=4;
+  double lambda=500.*1000.;
   long nLoci=X[0].size();
   hmmLoci locus;
   hmm HMM(nLoci,nStates,0.5,0.5);
+  HMM.lambda=lambda;
+  HMM.lociMapPt=&lociMap;
   double priorCount=5;
   vector<double> doubleRow;
   
 
     double sum=0,pival=0.30,delta=-.05;
-    for(int i=0;i<nStates;i++){
+    /*   for(int i=0;i<nStates;i++){
       HMM.pi[i]=pival;
       sum+=pival;
       pival+=delta;
-    }
-    for(int i=0;i<nStates;i++) HMM.pi[i]/=sum;
+      }*/
+    for(int i=0;i<nStates;i++) HMM.pi[i]=1./((double) nStates);
 
-    for(int chr=0;chr<nChrom;chr++) HMM.loci[chromStart[chr]].newChrom=1;
+    for(int chr=0;chr<nChrom;chr++)  {
+      HMM.loci[chromStart[chr]].newChrom=1;
+      for(int i=chromStart[chr];i<chromStart[chr+1];i++) HMM.loci[i].pos=lociMap[i].pos;
+    }
 
   double c=.95;
  
@@ -183,20 +179,26 @@ int main(int argc,char **argv){
 
     string hmmFileName;
     int failCode;
-    hmmFileName="HMM" + to_string(HMM.nStates) + "_" + to_string(HMM.nLoci) +".bin";
-    if((failCode=HMM.read(hmmFileName))!=0) cout << hmmFileName << " failed to be read  with code " << failCode << endl;
+    hmmFileName="HMMIM" + to_string(HMM.nStates) + "_" + to_string(HMM.nLoci) +".bin";
+    if((failCode=HMM.read(hmmFileName))!=0) {
+      cout << hmmFileName << " failed to be read  with code " << failCode << endl;
+      string hmmFileNameAlt;
+      hmmFileNameAlt="HMM" + to_string(HMM.nStates) + "_" + to_string(HMM.nLoci) +".bin";
+      if((failCode=HMM.read(hmmFileNameAlt))!=0) {
+	cout << hmmFileNameAlt << " also failed to be read  with code " << failCode << endl;
+      }
+    }
 
+    for(int k=0;k<nStates;k++) HMM.pi[k]=1./((double) nStates);
     HMM.initPComb();
   
-  XHaplo.resize(nLoci);
-  for(long i=0;i<nLoci;i++) XHaplo[i].resize(nPheno); 
+  
   
 
   //Estimation
   int nComb=HMM.nComb;
   int nIter=0;
   vector<double> pVec(nComb);
-
   for(int iter=0;iter<nIter;iter++){
     cout << "Iteration " << iter <<endl;
     HMM.initBW(priorCount);
@@ -259,7 +261,7 @@ int main(int argc,char **argv){
 	}
       }
     }
-    
+    /*
     for(int l=0;l<nStates;l++){
       HMM.pi[l]=0;
       for(int chr=0;chr<nChrom;chr++){
@@ -267,6 +269,7 @@ int main(int argc,char **argv){
       }
       HMM.pi[l]/=((double) nChrom);
     }
+    */
     HMM.resetP();
     HMM.initPComb();
 
@@ -326,22 +329,96 @@ int main(int argc,char **argv){
     
    
   }
-
+ 
   if(nIter) HMM.write(hmmFileName);
+
+
+
+  // Add QTL loci;
+  int q=0;
+  int nQTLLoci;
+  int nSNPLoci=nLoci;
+
+
+  for(int chr=0;chr<nChrom;chr++)  HMM.loci[chromStart[chr]].newChrom=0;
+  for(int chr=0;chr<nChrom;chr++){
+    aMapLocus.chrom=Chrom[chr];
+    //cout << "qpos "<< chromStart[chr] << " "  << lociMap[chromStart[chr]].pos+1 << " " << lociMap[chromStart[chr+1]-1].pos << endl;
+    for(long qPos=lociMap[chromStart[chr]].pos+1;qPos<lociMap[chromStart[chr+1]-1].pos;qPos+=freqQTL,q++){
+      aMapLocus.name="QTL_" + to_string(chr) + "_" + to_string(qPos);
+      aMapLocus.pos=qPos;
+      aMapLocus.isSNP=-1;
+      aMapLocus.isQTL=q;
+      nQTLLoci=q+1;
+      lociMap.push_back(aMapLocus);
+      //if(q< 100) cout << q <<" " << aMapLocus.name << endl;
+    }
+  }
+  
+  sort(lociMap.begin(),lociMap.end(),locusMapCompare);
+  chromStart.resize(0);
+  lastChrom=lociMap[0].chrom;
+  chromStart.push_back(0);
+  for(long i=1;i<lociMap.size();i++){
+    if(lastChrom!=lociMap[i].chrom){
+      chromStart.push_back(i);
+      lastChrom=lociMap[i].chrom;
+    }
+  }
+  chromStart.push_back(lociMap.size());
+  
+  nChrom=chromStart.size()-1;
+  nLoci=lociMap.size();
+  cout << "Number of Loci "<< nQTLLoci << " " << nSNPLoci << " " <<  nLoci << endl;
+
+  HMM.resize(nLoci);
+  for(int chr=0;chr<nChrom;chr++) {
+    HMM.loci[chromStart[chr]].newChrom=1;
+      for(int i=chromStart[chr];i<chromStart[chr+1];i++) HMM.loci[i].pos=lociMap[i].pos;
+  }
+
+  for(int chr=0;chr<nChrom;chr++){
+    for(long i=chromStart[chr];i<chromStart[chr+1];i++){
+      int q=lociMap[i].isQTL;
+      if(q>=0){
+	for(int j=i;j>=chromStart[chr] && lociMap[j].pos>lociMap[i].pos-500*1000 ; j--){
+	  int qj=lociMap[j].isQTL;
+	  if(qj>=0) lociMap[q].start=qj;
+	}
+	
+	for(int j=i;j<chromStart[chr+1] && lociMap[j].pos<lociMap[i].pos+500*1000 ; j++){
+	  int qj=lociMap[j].isQTL;
+	  if(qj>=0) 
+	  lociMap[q].stop=qj;
+	}
+      }
+    }
+  }
+  
+  if(0){
+    for(int i=0;i<nQTLLoci;i+=1000){
+      cout<< i << " " << lociMap[i].start << " " << lociMap[i].stop << endl;
+    }
+  }
+
+  XHaplo.resize(nQTLLoci);
+  for(long i=0;i<nQTLLoci;i++) XHaplo[i].resize(nPheno); 
   
   //
   // MCMC
   //
 
 
-  MCMCSamples.open("MCMCSamples.txt");
-  QTLResults.open("QTLResults.txt");
-  gHatResults.open("gHatResults.txt");
+  MCMCSamples.open("MCMCSamplesIM.txt");
+  QTLResults.open("QTLResultsIM.txt");
+  gHatResults.open("gHatResultsIM.txt");
 
   //double sig2bPrior=.5,sig2ePrior=20;
   double sig2bPrior=.05,sig2ePrior=5;
   double pi=.99,mu=0,inactiveProposal=0.9;
   
+  //int nSamples=40;
+  //int nBurnIn=2;
   int nSamples=81000;
   int nBurnIn=2000;
   int FreqToSampleHaplo=200; 
@@ -361,12 +438,12 @@ int main(int argc,char **argv){
   long activePos=0;
   uSmp=u.sample();
 
-  qtlVec.resize(nLoci);
-  qtlSumVec.resize(nLoci);
-  windowSumVec.assign(nLoci,0);
-  windowVec.resize(nLoci);
+  qtlVec.resize(nQTLLoci);
+  qtlSumVec.resize(nQTLLoci);
+  windowSumVec.assign(nQTLLoci,0);
+  windowVec.resize(nQTLLoci);
   activeLoci.resize(0);
-  for(long i=0;i<nLoci;i++) {
+  for(long i=0;i<nQTLLoci;i++) {
     qtlVec[i].init(nStates,sig2b,pi);
     qtlSumVec[i].init(nStates);
     if(qtlVec[i].active){
@@ -381,8 +458,8 @@ int main(int argc,char **argv){
   MCMCSamples << "Sample\tmu\tsig2b\tsig2e\tsig2g" << endl;
   QTLResults << "Loci\tName\tChrom\tPos\tmodelFreq\tb\twindowFreq";
   for(int l=0;l<nStates;l++) QTLResults << "\tDelta" << l ;
-  for(int l=0;l<nStates;l++) QTLResults << "\thaploFreq" << l ;
-  for(int l=0;l<nStates;l++) QTLResults << "\thaploTemplate" << l ;
+  //for(int l=0;l<nStates;l++) QTLResults << "\thaploFreq" << l ;
+  //for(int l=0;l<nStates;l++) QTLResults << "\thaploTemplate" << l ;
   QTLResults << endl;
   gHatResults << "ID\tgHat"<< endl;
   vector<double> logPHaplo(nPheno);
@@ -407,8 +484,10 @@ int main(int argc,char **argv){
   rhsV.assign(nStates,0.0);
   lhsV.assign(nComb,0.0);
   lhsVs.assign(nStates,0.0);
-  vector<vector<double> > lhsVArray(nLoci,lhsV),lhsVsArray(nLoci,lhsVs);
+  vector<vector<double> > lhsVArray(nQTLLoci,lhsV),lhsVsArray(nQTLLoci,lhsVs);
   
+
+
   for(int s=0;s<nSamples;s++){
 
     //
@@ -417,7 +496,7 @@ int main(int argc,char **argv){
     if((s%FreqToSampleHaplo)==0){
       computeLhsV=1;
       int nFlipped=0;
-      vector<int> XHaploNew(nLoci);
+      vector<int> XHaploNew(nQTLLoci);
       for(int a=0;a<nPheno;a++){
 	int seq=phenSeq[a];
 	int ranClass,ranClassOld;
@@ -441,16 +520,32 @@ int main(int argc,char **argv){
 	    ranClass=l;
 	    Thresh+=Pvec[l];
 	  }
-	  XHaploNew[nLoci-1]=ranClass;
+	  int q=lociMap[nLoci-1].isQTL;
+	  if(q>=0)XHaploNew[q]=ranClass;
 	  logPNewvsOld=log(Pvec[ranClass]);
 	}
 	for(long i=nLoci-2;i>=0;i--){
 	  double Psum=0;
 	  double Pval;
+	  double S=(double) nStates,lambda=HMM.lambda;
+	  lambda*=(S-1.)/S;
+	  vector<double> transSingle(2); 
+	  double eMult=0.;
+	  if(! HMM.loci[i+1].newChrom) eMult=exp(-((double)(HMM.loci[i+1].pos-HMM.loci[i].pos))/lambda);
+	  transSingle[1]=(1.+(S-1.)*eMult)/S;
+	  transSingle[0]=(1.-eMult)/S;
+
 	  for(int l=0;l<nComb;l++){
-	    Pval=HMM.loci[i].f[l]*HMM.pComb[l][ranClass];
-	    Pvec[l]=Pval;
-	    Psum+=Pval;
+
+	  int I1=HMM.stateI[l]; 
+	  int J1=HMM.stateJ[l];
+	  int I2=HMM.stateI[ranClass]; 
+	  int J2=HMM.stateJ[ranClass];
+	  Pval=transSingle[I1==I2]*transSingle[J1==J2];
+	  if(I2!=J2) Pval+=transSingle[I1==J2]*transSingle[J1==I2];
+	  Pval*=HMM.loci[i].f[l];
+	  Pvec[l]=Pval;
+	  Psum+=Pval;
 	  }
 	  for(int l=0;l<nComb;l++){
 	    Pvec[l]/=Psum;
@@ -462,9 +557,11 @@ int main(int argc,char **argv){
 	    ranClass=l;
 	    Thresh+=Pvec[l];
 	  }
-	  XHaploNew[i]=ranClass;
+	  int q=lociMap[i].isQTL;
+	  if(q>=0)XHaploNew[q]=ranClass;
 	  logPNewvsOld+=log(Pvec[ranClass]);
 	}
+
 	double yDevNew=y[a]-mu;
 	for(long i=0;i<nQTL;i++){
 	  long locus=activeLoci[i];
@@ -475,7 +572,7 @@ int main(int argc,char **argv){
 	}
 	uSmp=u.sample();
 	if(s==0 || log(uSmp)<-.5*(yDevNew*yDevNew-yDev[a]*yDev[a])*rinverse[a]/sig2e){
-	  for(long i=0;i<nLoci;i++) XHaplo[i][a]=XHaploNew[i];
+	  for(long i=0;i<nQTLLoci;i++) XHaplo[i][a]=XHaploNew[i];
 	  logPHaplo[a]=logPNewvsOld;
 	  nFlipped++;
 	}
@@ -484,12 +581,16 @@ int main(int argc,char **argv){
 
       cout << "XHalpo " << XHaplo.size() <<"x" << XHaplo[0].size() << endl;
       
-      for(int i=0;i<10;i++) 
+      for(int a=0;a<10;a++) 
 	{
 	  
-	  cout << i ;
-	  for(int a=0;a<20; a++){ 
+	  cout << a ;
+	  for(int i=0;i<20; i++){ 
 	    cout << " " << setw(1) << HMM.stateI[XHaplo[i][a]] << "/" << HMM.stateJ[XHaplo[i][a]];
+	  }
+	  cout << "   ";
+	  for(int i=0;i<20; i++){ 
+	    cout << " " << setw(1) << HMM.stateI[XHaplo[nQTLLoci-30+i][a]] << "/" << HMM.stateJ[XHaplo[nQTLLoci-30+i][a]];
 	  }
 	  cout <<endl;
 	}
@@ -523,7 +624,7 @@ int main(int argc,char **argv){
     activeLoci.resize(0);
     int nRejectI2A=0;
     int nRejectA2I=0;
-    for(long i=0;i<nLoci;i++){
+    for(long i=0;i<nQTLLoci;i++){
       int active=qtlVec[i].active;
       int nowActive=0;
       int proposeActive=0;
@@ -725,17 +826,15 @@ int main(int argc,char **argv){
     X2=2.*matvec::sgamma(nuTilde/2.0); //Chi-square;
     sig2b=ssb/X2;
     if(s>=nBurnIn){
-      windowVec.assign(nLoci,0);
-      for(int chr=0;chr<nChrom;chr++){
-	for(int i=chromStart[chr];i<chromStart[chr+1];i++){
-	  if(qtlVec[i].active){
-	    int start=lociMap[i].start;
-	    int end=lociMap[i].stop;
-	    for(int j=start;j<=end;j++) windowVec[j]=1;
-	  }
+      windowVec.assign(nQTLLoci,0);
+      for(int i=0;i<nQTLLoci;i++){
+	if(qtlVec[i].active){
+	  int start=lociMap[i].start;
+	  int end=lociMap[i].stop;
+	  for(int j=start;j<=end;j++) windowVec[j]=1;
 	}
       }
-      for(int i=0;i<nLoci;i++) {
+      for(int i=0;i<nQTLLoci;i++) {
 	if(windowVec[i]) windowSumVec[i]++;
       }
     }
@@ -751,6 +850,11 @@ int main(int argc,char **argv){
 	cout  << " " << setw(6) << activeLoci[i];
 	if((i %10)==9) cout <<endl;
       }
+      cout << endl;
+      for(int i=0; i< 100  ; i++ ) {
+	cout  << " " << setw(6) << activeLoci[nQTL-100+i];
+	if((i %10)==9) cout <<endl;
+      }
       cout << endl <<endl;
       if(s%outputFreq==0) MCMCSamples << s << "\t" << mu+sumg <<"\t" << sig2b << "\t" <<sig2e <<"\t" << sig2g << endl; 
     }
@@ -758,14 +862,18 @@ int main(int argc,char **argv){
   double numSampled;
   numSampled=(double)(nSamples-nBurnIn);
   for(long i=0;i<nLoci;i++){
-    double numActive=1;
-    if(qtlSumVec[i].active) numActive=(double) qtlSumVec[i].active;
-    
-    QTLResults << i << "\t" << lociMap[i].name << "\t" << lociMap[i].chrom << "\t"<< lociMap[i].pos<<"\t"<< ((double) qtlSumVec[i].active)/numSampled << "\t" << qtlSumVec[i].b/numSampled << "\t" << ((double) windowSumVec[i])/numSampled;
-    for(int l=0;l<nStates;l++) QTLResults << "\t" <<  2.*((double) qtlSumVec[i].delta[l])/numActive-1.;
-    for(int l=0;l<nStates;l++) QTLResults << "\t" <<HMM.loci[i].pState[l]/(2.*(nSeq+priorCount));
-    for(int l=0;l<nStates;l++) QTLResults << "\t" <<HMM.loci[i].e[l];
-    QTLResults << endl;
+    int q=lociMap[i].isQTL;
+    if(q>=0){
+      //cout << i << " " << q << endl;
+      double numActive=1;
+      if(qtlSumVec[q].active) numActive=(double) qtlSumVec[q].active;
+      
+      QTLResults << q << "\t" << lociMap[i].name << "\t" << lociMap[i].chrom << "\t"<< lociMap[i].pos<<"\t"<< ((double) qtlSumVec[q].active)/numSampled << "\t" << qtlSumVec[q].b/numSampled << "\t" << ((double) windowSumVec[q])/numSampled;
+      for(int l=0;l<nStates;l++) QTLResults << "\t" <<  2.*((double) qtlSumVec[q].delta[l])/numActive-1.;
+      //for(int l=0;l<nStates;l++) QTLResults << "\t" <<HMM.loci[i].pState[l]/(2.*(nSeq+priorCount));
+      //for(int l=0;l<nStates;l++) QTLResults << "\t" <<HMM.loci[i].e[l];
+      QTLResults << endl;
+    }
   }
   
   for(int a=0;a<nPheno;a++){
@@ -818,55 +926,94 @@ void qtlLocus::init(int ns,double sig2b,double pi){
 
 void forward(const long start, const long end,hmm &HMM, const vector<int> &X,const vector<double> &picomb){
   int nComb=HMM.nComb,nStates=HMM.nStates;
+  vector<locusMap> *lociMapPt=HMM.lociMapPt;
+  double S=(double) nStates,lambda=HMM.lambda;
+  lambda*=(S-1.)/S;
   double sum=0,val;
+  vector<double> transSingle(2); 
   for(int l=0;l<nComb;l++){
-    val=picomb[l]*HMM.emit(start,l,X[start]);
-      HMM.loci[start].f[l]=val;
-      sum+=val;
-   
+    val=picomb[l];
+    int snpLoc=(*lociMapPt)[start].isSNP;
+    if(snpLoc>=0) val*=HMM.emit(snpLoc,l,X[snpLoc]);
+    HMM.loci[start].f[l]=val;
+    sum+=val;
+
   }
   for(int l=0;l<nComb;l++) HMM.loci[start].f[l]/=sum;//scale
 
   for(int i=start+1;i<end;i++){
+    
+    double eMult=exp(-((double)(HMM.loci[i].pos-HMM.loci[i-1].pos))/lambda);
+    transSingle[1]=(1.+(S-1.)*eMult)/S;
+    transSingle[0]=(1.-eMult)/S;
+    if(0 ) cout << i << " " << (HMM.loci[i].pos-HMM.loci[i-1].pos)/lambda <<  " " << eMult << " " << transSingle[0] << " " << transSingle[1] << endl;
     sum=0;
-    for(int l=0;l<nComb;l++){
-      if(HMM.loci[i].newChrom){
-	val=picomb[l]*HMM.emit(i,l,X[i]);
-      }
-      else{
+    int l=0;
+    for(int I1=0;I1<nStates;I1++){
+      for(int J1=0;J1<=I1;J1++,l++){
+	if(HMM.loci[i].newChrom){
+	  val=picomb[l];
+
+	  int snpLoc=(*lociMapPt)[i].isSNP;
+	  if(snpLoc>=0) val*=HMM.emit(snpLoc,l,X[snpLoc]);
+	}
+	else{
 	  val=0;
-	  for(int k=0;k<nComb;k++){
-	    val+=HMM.loci[i-1].f[k]*HMM.pComb[k][l];
+	  int k=0;
+	  for(int I2=0;I2<nStates;I2++){
+	    for(int J2=0;J2<=I2;J2++,k++){
+	      val+=HMM.loci[i-1].f[k]*transSingle[I1==I2]*transSingle[J1==J2];
+	      if(I2!=J2) val+=HMM.loci[i-1].f[k]*transSingle[I1==J2]*transSingle[J1==I2];
+	    }
 	  }
-	  val*=HMM.emit(i,l,X[i]);
+	  int snpLoc=(*lociMapPt)[i].isSNP;
+	  if(snpLoc>=0) val*=HMM.emit(snpLoc,l,X[snpLoc]);
+	}
+	HMM.loci[i].f[l]=val;
+	sum+=val;
       }
-      HMM.loci[i].f[l]=val;
-      sum+=val;
     }
     for(int l=0;l<nComb;l++) HMM.loci[i].f[l]/=sum;//scale
   }
 }
 
+
+
 void backward(const long start, const long end,hmm &HMM, const vector<int> &X,const vector<double> &picomb){
   int nComb=HMM.nComb,nStates=HMM.nStates;
+  vector<locusMap> *lociMapPt=HMM.lociMapPt;
+  double S=(double) nStates,lambda=HMM.lambda;
+  lambda*=(S-1.)/S;
+  vector<double> transSingle(2); 
   double sum,val;
   for(int l=0;l<nComb;l++) HMM.loci[end-1].b[l]=1;
   for(long i=end-2;i>=start;i--){
+    double eMult=exp(-((double)(HMM.loci[i+1].pos-HMM.loci[i].pos))/lambda);
+    transSingle[1]=(1.+(S-1.)*eMult)/S;
+    transSingle[0]=(1.-eMult)/S;
     sum=0;
-    for(int k=0;k<nComb;k++){
-      val=0;
-      for(int l=0;l<nComb;l++){
-	if(HMM.loci[i+1].newChrom){
-	  val+=picomb[l]*HMM.emit(i+1,l,X[i+1])*HMM.loci[i+1].b[l];
+    int k=0;
+    for(int I1=0;I1<nStates;I1++){
+      for(int J1=0;J1<=I1;J1++,k++){
+	val=0;
+	int l=0;
+	for(int I2=0;I2<nStates;I2++){
+	  for(int J2=0;J2<=I2;J2++,l++){
+	    int snpLoc=(*lociMapPt)[i+1].isSNP;
+	    double eProb=1.;
+	    if(snpLoc>=0) eProb=HMM.emit(snpLoc,l,X[snpLoc]);
+	    if(HMM.loci[i+1].newChrom){
+	      val+=picomb[l]*HMM.loci[i+1].b[l]*eProb;	      
+	    }
+	    else{
+	      val+=transSingle[I1==I2]*transSingle[J1==J2]*HMM.loci[i+1].b[l]*eProb; 
+	      if(I2 !=J2)val+=transSingle[I1==J2]*transSingle[J1==I2]*HMM.loci[i+1].b[l]*eProb; 
+	    }
+	  }
 	}
-	else{
-	  val+=HMM.pComb[k][l]*HMM.emit(i+1,l,X[i+1])*HMM.loci[i+1].b[l]; 
-	}
+	HMM.loci[i].b[k]=val;
+	sum+=val;
       }
-      
-      HMM.loci[i].b[k]=val;
-      sum+=val;
-      
     }
     for(int k=0;k<nComb;k++) HMM.loci[i].b[k]/=sum;
   }

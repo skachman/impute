@@ -27,9 +27,10 @@ using namespace Eigen;
 class locusMap{
  public:
   string name;
-  int chrom;
+  int chrom,isSNP,isQTL;
   long pos,start,stop;
-  locusMap(string s,int c, long p){name=s;chrom=c;pos=p;};
+  locusMap(string s,int c, long p,int SNP,int QTL){name=s;chrom=c;pos=p;isSNP=SNP;isQTL=QTL;};
+  locusMap(string s,int c, long p){name=s;chrom=c;pos=p;isSNP=1;isQTL=-1;};
   locusMap(){};
   
 };
@@ -68,7 +69,7 @@ public:
 class hmmLoci{
 public:
   vector<double> e,f,b,E,pState,piVec;
-  int newChrom;
+  int newChrom,pos;
   hmmLoci() {hmmLoci(0,0);};
   hmmLoci(int ns,int nc){
     newChrom=0;
@@ -87,13 +88,19 @@ class hmm{
 public:
   int nStates,nComb;
   long nLoci;
-  double c;
+  double c,lambda;
   
   vector<vector<double> > p,pComb; 
   vector<double> pi,piComb;
   vector<int> stateI,stateJ;
   vector<hmmLoci> loci;
+  vector<locusMap> *lociMapPt;
 
+  void resize(const long nL){
+    hmmLoci locus(nStates,nComb);
+    nLoci=nL;
+    loci.resize(nLoci,locus);
+  };
   void initPComb(){
     pComb.resize(nComb);
     piComb.assign(nComb,0.0);
@@ -106,12 +113,14 @@ public:
 	int c1=i1*(i1+1)/2+j1;
 	if(j1>i1) c1=j1*(j1+1)/2+i1;
 	piComb[c1]+=pi[i1]*pi[j1];
-	for(int i2=0;i2<nStates;i2++){
-	  for(int j2=0;j2<nStates;j2++){
-	    int c2=i2*(i2+1)/2+j2;
-	    if(j2>i2) c2=j2*(j2+1)/2+i2;
-	    pComb[c1][c2]+=p[i1][i2]*p[j1][j2];
-	  } 
+	if(j1<=i1){
+	  for(int i2=0;i2<nStates;i2++){
+	    for(int j2=0;j2<nStates;j2++){
+	      int c2=i2*(i2+1)/2+j2;
+	      if(j2>i2) c2=j2*(j2+1)/2+i2;
+	      pComb[c1][c2]+=p[i1][i2]*p[j1][j2];
+	    } 
+	  }
 	}
       }
     }

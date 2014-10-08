@@ -75,13 +75,16 @@ first: all
 
 ####### Build rules
 
-all: Makefile $(TARGET) bin/imputeMCMC bin/imputeTwoTrait
+all: Makefile $(TARGET) bin/imputeMCMC bin/BayesIM # bin/imputeTwoTrait
 
 $(TARGET):  $(OBJECTS)  
 	$(LINK) $(LFLAGS) -o $(TARGET) $(OBJECTS) $(OBJCOMP) $(LIBS)
 
 bin/imputeMCMC:   $(OBJECTS_DIR)imputeMCMC.o	 
 	$(LINK) $(LFLAGS) -o bin/imputeMCMC  $(OBJECTS_DIR)imputeMCMC.o $(OBJCOMP) $(LIBS)
+
+bin/BayesIM:   $(OBJECTS_DIR)BayesIM.o	 
+	$(LINK) $(LFLAGS) -o bin/BayesIM  $(OBJECTS_DIR)BayesIM.o $(OBJCOMP) $(LIBS)
 
 bin/imputeTwoTrait:   $(OBJECTS_DIR)imputeTwoTrait.o
 	$(LINK) $(LFLAGS) -o bin/imputeTwoTrait  $(OBJECTS_DIR)imputeTwoTrait.o $(OBJCO\
@@ -142,6 +145,9 @@ $(OBJECTS_DIR)imputeTwoTrait.o: $(SRC_DIR)imputeTwoTrait.cpp $(HEADER_DIR)impute
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o $(OBJECTS_DIR)imputeTwoTrait.o $(SRC_DIR)imputeTwoTrait.cpp
 
 
+
+$(OBJECTS_DIR)BayesIM.o: $(SRC_DIR)BayesIM.cpp $(HEADER_DIR)impute.h
+	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o $(OBJECTS_DIR)BayesIM.o $(SRC_DIR)BayesIM.cpp
 
 $(OBJECTS_DIR)imputeMCMC.o: $(SRC_DIR)imputeMCMC.cpp $(HEADER_DIR)impute.h
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o $(OBJECTS_DIR)imputeMCMC.o $(SRC_DIR)imputeMCMC.cpp

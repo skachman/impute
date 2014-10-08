@@ -759,7 +759,7 @@ void forward(const long start, const long end,hmm &HMM, const vector<int> &X,con
     sum=0;
     for(int l=0;l<nComb;l++){
       if(HMM.loci[i].newChrom){
-	val=picomb[l]*HMM.emit(i,l,X[start]);
+	val=picomb[l]*HMM.emit(i,l,X[i]);
       }
       else{
 	  val=0;
