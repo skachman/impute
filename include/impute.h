@@ -17,7 +17,7 @@
 
 #include <Eigen/Dense>
 
-
+#include "Configuration.h"
 
 
 using namespace std;

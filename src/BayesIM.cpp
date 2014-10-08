@@ -3,10 +3,93 @@
 
 int main(int argc,char **argv){
 
+  string genoName,phenoName,mapName;
+  mapName="Map.txt";
+  genoName="geno.dat";
+  phenoName="BWT.dat";
+  int freqQTLKb=25; 
+  int nStates=4;
+  double lambdaKb=500.;
   
+  double c=.95; // Not Used
+  int nIter=0; // Number of iteration to build HMM
+  string baseName,MCMCName,QTLName,gHatName;
+  baseName="IM";
+  int nSamples=81000;
+  int nBurnIn=2000;
+  int FreqToSampleHaplo=200; 
+  int printFreq=10;
+  int outputFreq=8;
+  int windowSize=10;  //windowWidth=2*windowSize+1
+  double sig2bPrior=.05,sig2ePrior=5;
+  double pi=.99,mu=0,inactiveProposal=0.9;
+  double nusig2e=10,nusig2b=4;
 
-  cout << "Maximum value for int:  " << numeric_limits<int>::max() << '\n';
-  cout << "Maximum value for long: " << numeric_limits<long>::max() << '\n';
+  Configuration config;
+
+  if(argc>1){
+    if(!config.Load(argv[1])) exit(1);
+    config.Get("genoName",genoName);
+    config.Get("phenoName",phenoName);
+    config.Get("mapName",mapName);
+    config.Get("freqQTLKb",freqQTLKb);
+    config.Get("nStates",nStates);
+    config.Get("lambdaKb",lambdaKb);
+    config.Get("nIter",nIter);
+    config.Get("baseName",baseName);
+    config.Get("nSamples",nSamples);
+    config.Get("nBurnIn",nBurnIn);
+    config.Get("FreqToSampleHaplo",FreqToSampleHaplo);
+    config.Get("printFreq",printFreq);
+    config.Get("outputFreq",outputFreq);
+    config.Get("c",c);
+    config.Get("windowSize",windowSize);
+    config.Get("nusig2e",nusig2e);
+    config.Get("sig2ePrior",sig2ePrior);
+    config.Get("nusig2b",nusig2b);
+    config.Get("sig2bPrior",sig2bPrior);
+    config.Get("pi",pi);
+    config.Get("mu",mu);
+    config.Get("inactiveProposal",inactiveProposal);
+
+  }
+  double lambda=lambdaKb*1000.;
+  int freqQTL=freqQTLKb*1000;
+
+  MCMCName=baseName+"_MCMCSamples.txt";
+  QTLName=baseName+"_QTLResults.txt";
+  gHatName=baseName+"_gHatResults.txt";
+
+  cout << "Input Parameters" << endl <<endl;
+  cout << setw(20) << "genoName:" << " " << genoName << endl;
+  cout << setw(20) << "phenoName:" << " " << phenoName << endl;
+  cout << setw(20) << "mapName:" << " " << mapName << endl;
+  cout << setw(20) << "freqQTLKb:" << " " << freqQTLKb << endl;
+  cout << setw(20) << "nStates:" << " " << nStates << endl;
+  cout << setw(20) << "lambdaKb:" << " " << lambdaKb << endl;
+  cout << setw(20) << "nIter:" << " " << nIter << endl;
+  cout << setw(20) << "baseName:" << " " << baseName << endl;
+  cout << setw(20) << "MCMCName:" << " " << MCMCName <<endl;
+  cout << setw(20) << "QTLName:" << " " << QTLName <<endl;
+  cout << setw(20) << "gHatName:" << " " << gHatName <<endl;
+  cout << setw(20) << "nSamples:" << " " << nSamples << endl;
+  cout << setw(20) << "nBurnIn:" << " " << nBurnIn << endl;
+  cout << setw(20) << "FreqToSampleHaplo:" << " " << FreqToSampleHaplo << endl;
+  cout << setw(20) << "printFreq:" << " " << printFreq << endl;
+  cout << setw(20) << "outputFreq:" << " " << outputFreq << endl;
+  //cout << setw(20) << "c:" << " " << c << endl;
+  //cout << setw(20) << "windowSize:" << " " << windowSize << endl;
+  cout << setw(20) << "nusig2e:" << " " << nusig2e << endl;
+  cout << setw(20) << "sig2ePrior:" << " " << sig2ePrior << endl;
+  cout << setw(20) << "nusig2b:" << " " << nusig2b << endl;
+  cout << setw(20) << "sig2bPrior:" << " " << sig2bPrior << endl;
+  cout << setw(20) << "pi:" << " " << pi << endl;
+  cout << setw(20) << "mu:" << " " << mu << endl;
+  cout << setw(20) << "inactiveProposal:" << " " << inactiveProposal << endl;
+  cout << endl << endl;
+  
+  //  cout << "Maximum value for int:  " << numeric_limits<int>::max() << '\n';
+  //  cout << "Maximum value for long: " << numeric_limits<long>::max() << '\n';
 
   matvec::UniformDist u;
   matvec::NormalDist Z;
@@ -21,7 +104,6 @@ int main(int argc,char **argv){
   vector<vector<haploLocus> > haploProb;
   vector<locusMap> lociMap;
   locusMap aMapLocus;
-  int freqQTL=25*1000;
 
   vector<string > ID;
   double val;
@@ -35,8 +117,8 @@ int main(int argc,char **argv){
                 mkdir("./matvec_trash",0777);
         } 
   matvec::SESSION.initialize("matvec_trash");
-  filename="Map.txt";
-  MapFile.open(filename);
+  //filename=mapName;
+  MapFile.open(mapName);
   getline(MapFile,line);
   while(getline(MapFile,line)){
     stringstream linestr(line);
@@ -74,8 +156,8 @@ int main(int argc,char **argv){
 
   vector<long> posVector(lociMap.size(),-1);
 
-  filename="geno.dat";
-  Geno.open(filename);
+  //filename="geno.dat";
+  Geno.open(genoName);
   getline(Geno,line);
   stringstream linestr(line);
   linestr >> id;
@@ -118,8 +200,8 @@ int main(int argc,char **argv){
   //
   // Read Pheno
   //
-  filename="BWT.dat";
-  Pheno.open(filename);
+  //filename="BWT.dat";
+  Pheno.open(phenoName);
   getline(Pheno,line);
   vector<double> y,Xmu,rinverse;
   vector<int> phenSeq;
@@ -148,8 +230,7 @@ int main(int argc,char **argv){
     cout << phenSeq[i] << " " << ID[phenSeq[i]] << " " << y[i] << " " << Xmu[i] << " " << rinverse[i] << endl;
   }
 
-  int nStates=4;
-  double lambda=500.*1000.;
+  
   long nLoci=X[0].size();
   hmmLoci locus;
   hmm HMM(nLoci,nStates,0.5,0.5);
@@ -172,7 +253,7 @@ int main(int argc,char **argv){
       for(int i=chromStart[chr];i<chromStart[chr+1];i++) HMM.loci[i].pos=lociMap[i].pos;
     }
 
-  double c=.95;
+  
  
     HMM.c=c;
     HMM.resetP();
@@ -197,7 +278,7 @@ int main(int argc,char **argv){
 
   //Estimation
   int nComb=HMM.nComb;
-  int nIter=0;
+  
   vector<double> pVec(nComb);
   for(int iter=0;iter<nIter;iter++){
     cout << "Iteration " << iter <<endl;
@@ -409,24 +490,16 @@ int main(int argc,char **argv){
   //
 
 
-  MCMCSamples.open("MCMCSamplesIM.txt");
-  QTLResults.open("QTLResultsIM.txt");
-  gHatResults.open("gHatResultsIM.txt");
+  MCMCSamples.open(MCMCName);
+  QTLResults.open(QTLName);
+  gHatResults.open(gHatName);
 
   //double sig2bPrior=.5,sig2ePrior=20;
-  double sig2bPrior=.05,sig2ePrior=5;
-  double pi=.99,mu=0,inactiveProposal=0.9;
+  
   
   //int nSamples=40;
   //int nBurnIn=2;
-  int nSamples=81000;
-  int nBurnIn=2000;
-  int FreqToSampleHaplo=200; 
-  int printFreq=10;
-  int outputFreq=8;
-  int windowSize=10;  //windowWidth=2*windowSize+1
-
-  double nusig2e=10,nusig2b=4;
+  
   double sig2e=sig2ePrior,sig2b=sig2bPrior,sig2g;
   double scaleRes=sig2ePrior*(nusig2e-2.);
   double scaleB=sig2bPrior*(nusig2b-2.);
