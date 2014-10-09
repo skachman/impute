@@ -25,6 +25,12 @@ int main(int argc,char **argv){
   double pi=.99,mu=0,inactiveProposal=0.9;
   double nusig2e=10,nusig2b=4;
 
+  
+MCMCName=baseName+"_MCMCSamples.txt";
+  QTLName=baseName+"_QTLResults.txt";
+  gHatName=baseName+"_gHatResults.txt";
+
+
   Configuration config;
 
   if(argc>1){
@@ -37,13 +43,19 @@ int main(int argc,char **argv){
     config.Get("lambdaKb",lambdaKb);
     config.Get("nIter",nIter);
     config.Get("baseName",baseName);
+    MCMCName=baseName+"_MCMCSamples.txt";
+    QTLName=baseName+"_QTLResults.txt";
+    gHatName=baseName+"_gHatResults.txt";
+    config.Get("MCMCName",MCMCName);
+    config.Get("QTLName",QTLName);
+    config.Get("gHatName",gHatName);
     config.Get("nSamples",nSamples);
     config.Get("nBurnIn",nBurnIn);
     config.Get("FreqToSampleHaplo",FreqToSampleHaplo);
     config.Get("printFreq",printFreq);
     config.Get("outputFreq",outputFreq);
-    config.Get("c",c);
-    config.Get("windowSize",windowSize);
+    config.Get("c",c); //Not Used
+    config.Get("windowSize",windowSize); //Not Used
     config.Get("nusig2e",nusig2e);
     config.Get("sig2ePrior",sig2ePrior);
     config.Get("nusig2b",nusig2b);
@@ -56,36 +68,33 @@ int main(int argc,char **argv){
   double lambda=lambdaKb*1000.;
   int freqQTL=freqQTLKb*1000;
 
-  MCMCName=baseName+"_MCMCSamples.txt";
-  QTLName=baseName+"_QTLResults.txt";
-  gHatName=baseName+"_gHatResults.txt";
 
   cout << "Input Parameters" << endl <<endl;
-  cout << setw(20) << "genoName:" << " " << genoName << endl;
-  cout << setw(20) << "phenoName:" << " " << phenoName << endl;
-  cout << setw(20) << "mapName:" << " " << mapName << endl;
-  cout << setw(20) << "freqQTLKb:" << " " << freqQTLKb << endl;
-  cout << setw(20) << "nStates:" << " " << nStates << endl;
-  cout << setw(20) << "lambdaKb:" << " " << lambdaKb << endl;
-  cout << setw(20) << "nIter:" << " " << nIter << endl;
-  cout << setw(20) << "baseName:" << " " << baseName << endl;
-  cout << setw(20) << "MCMCName:" << " " << MCMCName <<endl;
-  cout << setw(20) << "QTLName:" << " " << QTLName <<endl;
-  cout << setw(20) << "gHatName:" << " " << gHatName <<endl;
-  cout << setw(20) << "nSamples:" << " " << nSamples << endl;
-  cout << setw(20) << "nBurnIn:" << " " << nBurnIn << endl;
-  cout << setw(20) << "FreqToSampleHaplo:" << " " << FreqToSampleHaplo << endl;
-  cout << setw(20) << "printFreq:" << " " << printFreq << endl;
-  cout << setw(20) << "outputFreq:" << " " << outputFreq << endl;
-  //cout << setw(20) << "c:" << " " << c << endl;
-  //cout << setw(20) << "windowSize:" << " " << windowSize << endl;
-  cout << setw(20) << "nusig2e:" << " " << nusig2e << endl;
-  cout << setw(20) << "sig2ePrior:" << " " << sig2ePrior << endl;
-  cout << setw(20) << "nusig2b:" << " " << nusig2b << endl;
-  cout << setw(20) << "sig2bPrior:" << " " << sig2bPrior << endl;
-  cout << setw(20) << "pi:" << " " << pi << endl;
-  cout << setw(20) << "mu:" << " " << mu << endl;
-  cout << setw(20) << "inactiveProposal:" << " " << inactiveProposal << endl;
+  cout << setw(22) << "genoName = " << " " << genoName << endl;
+  cout << setw(22) << "phenoName = " << " " << phenoName << endl;
+  cout << setw(22) << "mapName = " << " " << mapName << endl;
+  cout << setw(22) << "freqQTLKb = " << " " << freqQTLKb << endl;
+  cout << setw(22) << "nStates = " << " " << nStates << endl;
+  cout << setw(22) << "lambdaKb = " << " " << lambdaKb << endl;
+  cout << setw(22) << "nIter = " << " " << nIter << endl;
+  cout << setw(22) << "baseName = " << " " << baseName << endl;
+  cout << setw(22) << "MCMCName = " << " " << MCMCName <<endl;
+  cout << setw(22) << "QTLName = " << " " << QTLName <<endl;
+  cout << setw(22) << "gHatName = " << " " << gHatName <<endl;
+  cout << setw(22) << "nSamples = " << " " << nSamples << endl;
+  cout << setw(22) << "nBurnIn = " << " " << nBurnIn << endl;
+  cout << setw(22) << "FreqToSampleHaplo = " << " " << FreqToSampleHaplo << endl;
+  cout << setw(22) << "printFreq = " << " " << printFreq << endl;
+  cout << setw(22) << "outputFreq = " << " " << outputFreq << endl;
+  //cout << setw(22) << "c = " << " " << c << endl;
+  //cout << setw(22) << "windowSize = " << " " << windowSize << endl;
+  cout << setw(22) << "nusig2e = " << " " << nusig2e << endl;
+  cout << setw(22) << "sig2ePrior = " << " " << sig2ePrior << endl;
+  cout << setw(22) << "nusig2b = " << " " << nusig2b << endl;
+  cout << setw(22) << "sig2bPrior = " << " " << sig2bPrior << endl;
+  cout << setw(22) << "pi = " << " " << pi << endl;
+  cout << setw(22) << "mu = " << " " << mu << endl;
+  cout << setw(22) << "inactiveProposal = " << " " << inactiveProposal << endl;
   cout << endl << endl;
   
   //  cout << "Maximum value for int:  " << numeric_limits<int>::max() << '\n';
@@ -108,8 +117,9 @@ int main(int argc,char **argv){
   vector<string > ID;
   double val;
   int iVal;
+  string sVal;
   unsigned seed=3434241;
-  seed =(unsigned)(time(NULL));
+  if(0) seed =(unsigned)(time(NULL));
   DIR *dirPtr = opendir("matvec_trash");
         if (!dirPtr){
                 umask(0);
@@ -127,7 +137,7 @@ int main(int argc,char **argv){
     linestr >> aMapLocus.pos;
     lociMap.push_back(aMapLocus);
   }
-  cout << "read in Map " << endl;
+  cout << "Read in map file" << endl << endl;;
   sort(lociMap.begin(),lociMap.end(),locusMapCompare);
   map<string,long> mapOrder;
   for(long i=0;i<lociMap.size();i++) {
@@ -150,14 +160,15 @@ int main(int argc,char **argv){
   chromStart.push_back(lociMap.size());
   int nChrom=chromStart.size()-1;
 
-  
-  for(int chr=0;chr<nChrom;chr++) cout << chromStart[chr] << " ";
-  cout << endl;
-
+  if(0){
+    for(int chr=0;chr<nChrom;chr++) cout << chromStart[chr] << " ";
+    cout << endl;
+  }
   vector<long> posVector(lociMap.size(),-1);
 
   //filename="geno.dat";
   Geno.open(genoName);
+  cout << "Read in genotype file" << endl;
   getline(Geno,line);
   stringstream linestr(line);
   linestr >> id;
@@ -183,53 +194,154 @@ int main(int argc,char **argv){
     }
     
   }
-  cout << seq <<endl;
-  cout <<  X.size() << endl;
-  cout << X[0].size() << endl;
-  cout << X[X.size()-1].size() << endl;
+  //cout << seq <<endl;
+  cout <<  "Number of genotyped animals: " << X.size() << endl;
+  cout <<  "              Number of SNP: " << X[0].size() << endl<<endl;
+  //cout << X[X.size()-1].size() << endl;
   double nSeq;
   nSeq=(double) X.size();
-  for(int i=0;i<10;i++){
-    cout << ID[i] ;
-    for(int j=0;j<5;j++){
-      cout << " " << X[i][j];
+  if(0){
+    for(int i=0;i<10;i++){
+      cout << ID[i] ;
+      for(int j=0;j<5;j++){
+	cout << " " << X[i][j];
+      }
+      cout << endl;
     }
-    cout << endl;
   }
+
 
   //
   // Read Pheno
   //
   //filename="BWT.dat";
+  cout << "Read in phenotype file" << endl;
   Pheno.open(phenoName);
   getline(Pheno,line);
   vector<double> y,Xmu,rinverse;
   vector<int> phenSeq;
   vector<string> phenID;
+  vector<string> phenLabels;
+  vector<variable_t> varType;
+  int nColumns=0;
+  int rinversePos=0;
+  stringstream leader(line);
+  int next;
+  int nCovariate=0;
+  int nClass=0;
+  while(line.length() && (next=line.find_first_not_of(" \t")) !=string::npos){
+    line=line.substr(next);
+    string label=line;
+    int last=line.find_first_of(" \t");
+    if(last != string::npos) label=line.substr(0,last);
+    phenLabels.push_back(label);
+    switch(nColumns){
+    case 0:
+      varType.push_back(VAR_ID);
+      break;
+    case 1:
+      varType.push_back(VAR_DEP_VAR);
+      break;
+    default:
+      if(label=="rinverse") {
+	varType.push_back(VAR_RINVERSE);
+	rinversePos=nColumns;
+      }
+      else{
+	char lastChar=label[label.length()-1];
+	switch(lastChar){
+	case '$': 
+	  varType[nColumns]=VAR_CLASS;
+	  nClass++;
+	  break;
+	case '#':
+	  varType[nColumns]=VAR_SKIP;
+	  break;
+	default:
+	  varType.push_back(VAR_COVARIATE);
+	  nCovariate++;
+	}
+      }
+    }
+    if(last != string::npos){
+      line=line.substr(last);
+    }
+    else line="";
+    nColumns++;
+  }
+
+ 
+  nColumns=phenLabels.size();
+  if(0)
+    {
+      for(int col=0;col<nColumns;col++){
+	cout << phenLabels[col] <<" " <<varType[col];
+	if(col==rinversePos) cout  << " rinverse";
+	cout << endl;
+      }
+    }
+
+  vector<  map<string,int> > classMatrix(nClass);
+  map<string,int>::iterator classIt;
+  vector< vector<int> > posMatrix(nClass);
+  vector< vector<double> > valMatrix(nCovariate);
+  vector<int > nLevels(nClass,0);
+  
+  
   int notFound=0;
   while(getline(Pheno,line)){
+    int iCl=0;
+    int iCv=0;
+    
     stringstream linestream(line);
     linestream >> id;
     seqMapIt=seqMap.find(id);
     if(seqMapIt != seqMap.end()){
       phenID.push_back(id);
       phenSeq.push_back(seqMapIt->second);
-      linestream >> val;
-      y.push_back(val);
-      linestream >> val;
-      Xmu.push_back(val);
-      linestream >> val;
-      rinverse.push_back(val);
-      
+      if(!rinversePos) rinverse.push_back(1.);
+      for(int col=1;col<nColumns;col++){
+	switch(varType[col]){
+	case VAR_DEP_VAR:
+	  linestream >> val;
+	  y.push_back(val);
+	  break;
+	case VAR_RINVERSE:
+	  linestream >> val;
+	  rinverse.push_back(val);
+	  break;
+	case VAR_COVARIATE:
+	  linestream >> val;
+	  valMatrix[iCv++].push_back(val);
+	  break;
+	case VAR_CLASS:
+	  linestream >> sVal;
+	  classIt=classMatrix[iCl].find(sVal);
+	  if(classIt==classMatrix[iCl].end())classMatrix[iCl][sVal]=nLevels[iCl]++;
+	  posMatrix[iCl++].push_back(classMatrix[iCl][sVal]);
+	  break;
+	default:
+	  linestream >> sVal;
+	}
+	  
+      }
     }
   }
+  
   int nPheno=y.size();
 
-  cout << "Matched Phenotypes "<< nPheno  << endl;
-  for(int i=0;i< 10;i++){
-    cout << phenSeq[i] << " " << ID[phenSeq[i]] << " " << y[i] << " " << Xmu[i] << " " << rinverse[i] << endl;
+  cout << "Matched Phenotypes "<< nPheno  << endl << endl;
+  if(1){
+    for(int i=0;i< 10;i++){
+      cout << setw(5) << phenSeq[i] << " ID " << setw(10) <<  ID[phenSeq[i]] << " y " << setw(10) 
+	   << setprecision(5) << y[i] ;
+      if(rinversePos) cout << " Rinv " << setw(10) << setprecision(5) << rinverse[i] ;
+      for(int iCl=0;iCl<nClass;iCl++) cout << " Pos " << setw(2) << posMatrix[iCl][i];
+      for(int iCv=0;iCv<nCovariate;iCv++) cout << " Val " << setw(6) << setprecision(4) << valMatrix[iCv][i];
+      cout << endl;
+    }
+    cout << endl;
   }
-
   
   long nLoci=X[0].size();
   hmmLoci locus;
@@ -450,7 +562,9 @@ int main(int argc,char **argv){
   
   nChrom=chromStart.size()-1;
   nLoci=lociMap.size();
-  cout << "Number of Loci "<< nQTLLoci << " " << nSNPLoci << " " <<  nLoci << endl;
+  cout << "  Number of QTL loci: "<< nQTLLoci<< endl;
+  cout << "  Number of SNP loci: " << nSNPLoci << endl;
+  cout << "Total Number of loci: " <<  nLoci << endl << endl;
 
   HMM.resize(nLoci);
   for(int chr=0;chr<nChrom;chr++) {
@@ -546,8 +660,10 @@ int main(int argc,char **argv){
     }
     if(s<nStates) {
       dVec[s]=1;
-      for(int i=0;i<nStates;i++) cout << dVec[i] << " ";
-      cout << endl;
+      if(0){
+	for(int i=0;i<nStates;i++) cout << dVec[i] << " ";
+	cout << endl;
+      }
       deltaStates.push_back(dVec);
     }
   }while(s<nStates);
@@ -567,6 +683,7 @@ int main(int argc,char **argv){
     // Fill in HaploVec
     //
     if((s%FreqToSampleHaplo)==0){
+      cout << endl << "Sampling haplotypes" << endl;
       computeLhsV=1;
       int nFlipped=0;
       vector<int> XHaploNew(nQTLLoci);
@@ -650,10 +767,10 @@ int main(int argc,char **argv){
 	  nFlipped++;
 	}
       }
-      cout << nFlipped << " of " << nPheno << endl;
+      cout << "Accepted "<< nFlipped << " of " << nPheno << " proposed haplotypes." << endl;
 
-      cout << "XHalpo " << XHaplo.size() <<"x" << XHaplo[0].size() << endl;
-      
+      //cout << "XHalpo " << XHaplo.size() <<"x" << XHaplo[0].size() << endl;
+      cout << endl << "Haplotypes " <<endl <<endl;;
       for(int a=0;a<10;a++) 
 	{
 	  
@@ -886,12 +1003,15 @@ int main(int argc,char **argv){
 
     //update sig2e;
     nuTilde=((double) nPheno)+nusig2e;
-
-    for(int a=0;a<nPheno;a++) sse+=yDev[a]*yDev[a]*rinverse[a];
+    //cout << "sse " << sse << endl; 
+    for(int a=0;a<nPheno;a++)  sse+=yDev[a]*yDev[a]*rinverse[a];
+     
+    
 
     double X2;
     X2=2.*matvec::sgamma(nuTilde/2.0); //Chi-square;
     sig2e=sse/X2;
+    //cout << "Sig2E " << sse << " " << nuTilde << " " << X2 << " " << sig2e << endl; 
 
     //update sig2b;
     nQTL=activeLoci.size();

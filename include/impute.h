@@ -20,6 +20,8 @@
 #include "Configuration.h"
 
 
+enum variable_t { VAR_ID,VAR_DEP_VAR,VAR_RINVERSE,VAR_COVARIATE,VAR_CLASS,VAR_SKIP};
+
 using namespace std;
 
 using namespace Eigen;
