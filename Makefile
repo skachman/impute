@@ -42,6 +42,8 @@ MKDIR         = mkdir -p
 
 OBJECTS_DIR   =  obj/
 
+BINARY_DIR    = ~/bin/
+
 ####### Files
 
 SOURCES       = $(SRC_DIR)impute.cpp  
@@ -166,7 +168,8 @@ $(OBJECTS_DIR)imputeMCMC.o: $(SRC_DIR)imputeMCMC.cpp $(HEADER_DIR)impute.h
 
 ####### Install
 
-install:   FORCE
+install:   bin/BayesIM
+	cp bin/BayesIM $(BINARY_DIR) 
 
 uninstall:   FORCE
 

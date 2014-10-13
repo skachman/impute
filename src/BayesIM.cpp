@@ -119,7 +119,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
   int iVal;
   string sVal;
   unsigned seed=3434241;
-  if(0) seed =(unsigned)(time(NULL));
+  if(1) seed =(unsigned)(time(NULL));
   DIR *dirPtr = opendir("matvec_trash");
         if (!dirPtr){
                 umask(0);
@@ -144,6 +144,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
     lociMap[i].isSNP=i;
     lociMap[i].isQTL=-1;
     mapOrder[lociMap[i].name]=i;
+    //if(i<10) cout << lociMap[i].name << " " << i << endl;
   }
 
   vector<int> chromStart,Chrom;
@@ -164,7 +165,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
     for(int chr=0;chr<nChrom;chr++) cout << chromStart[chr] << " ";
     cout << endl;
   }
-  vector<long> posVector(lociMap.size(),-1);
+  vector<long> posVector;
 
   //filename="geno.dat";
   Geno.open(genoName);
@@ -174,7 +175,17 @@ MCMCName=baseName+"_MCMCSamples.txt";
   linestr >> id;
   long ipos=0;
   while(linestr >> id){
-    posVector[ipos++]=mapOrder[id];
+    if(mapOrder.find(id)!=mapOrder.end()){
+      posVector.push_back(mapOrder[id]);
+      iVal=mapOrder[id];
+    }
+    else{
+      iVal=-1;
+      posVector.push_back(-1);
+    }
+    //if(ipos<10) cout << ipos << " "  << id << " " << iVal << endl;
+    //if(iVal >-1 && iVal < 10) cout << ipos << " "  << id <<  " " << iVal <<"*" <<endl;
+    ipos++;
   }
 
   int seq=0;
@@ -183,17 +194,39 @@ MCMCName=baseName+"_MCMCSamples.txt";
     linestr >> id;
     ID.push_back(id);
     seqMap[id]=seq++;
-    vector<int> row(mapOrder.size());
+    vector<int> row(mapOrder.size(),-2);
     X.push_back(row);
     long i=0;
     if((seq%200)==0) cout << seq << endl;
-    while(linestr >> iVal){
-      iVal+=10;
-      iVal/=10;
-      X.back()[posVector[i++]]=iVal;
+    while(linestr >> val){
+      iVal=-1;
+      if(val==10 || val==0 || val==-10){
+	iVal=val+10;
+	iVal/=10;
+      }
+
+      //if(seq < 1 && i<5) cout << i << " " << val << " " << iVal << " " <<posVector[i] << endl;
+      //if(seq < 5 && posVector[i]<5 && posVector[i]> -1) cout << i << " " << val << " " << iVal << " " <<posVector[i] <<"*"<< endl;
+      if(posVector[i]>-1)X.back()[posVector[i]]=iVal;
+      i++;
     }
     
   }
+
+  cout << endl;
+  for(int i=0;i<10;i++){
+    cout << ID[i];
+    for(int j=0;j<10;j++){
+      cout << " " <<setw(2) << X[i][j];
+    } 
+    cout <<"    ";
+    for(int j=10;j>0;j--){
+      
+      cout << " " <<setw(2) << X[i][mapOrder.size()-j];
+    }
+    cout << endl;
+  }
+  cout << endl;
   //cout << seq <<endl;
   cout <<  "Number of genotyped animals: " << X.size() << endl;
   cout <<  "              Number of SNP: " << X[0].size() << endl<<endl;
@@ -222,6 +255,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
   vector<int> phenSeq;
   vector<string> phenID;
   vector<string> phenLabels;
+  vector<string> className,covName;
   vector<variable_t> varType;
   int nColumns=0;
   int rinversePos=0;
@@ -251,14 +285,16 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	char lastChar=label[label.length()-1];
 	switch(lastChar){
 	case '$': 
-	  varType[nColumns]=VAR_CLASS;
+	  varType.push_back(VAR_CLASS);
+	  className.push_back(label);
 	  nClass++;
 	  break;
 	case '#':
-	  varType[nColumns]=VAR_SKIP;
+	  varType.push_back(VAR_SKIP);
 	  break;
 	default:
 	  varType.push_back(VAR_COVARIATE);
+	  covName.push_back(label);
 	  nCovariate++;
 	}
       }
@@ -282,11 +318,14 @@ MCMCName=baseName+"_MCMCSamples.txt";
     }
 
   vector<  map<string,int> > classMatrix(nClass);
+  vector<vector<string> > classValues(nClass);
   map<string,int>::iterator classIt;
   vector< vector<int> > posMatrix(nClass);
-  vector< vector<double> > valMatrix(nCovariate);
+  vector< vector<double> > valMatrix(nCovariate),betaClass(nClass);
+  vector<double> betaCov(nCovariate,0.);
   vector<int > nLevels(nClass,0);
   
+
   
   int notFound=0;
   while(getline(Pheno,line)){
@@ -317,8 +356,13 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	case VAR_CLASS:
 	  linestream >> sVal;
 	  classIt=classMatrix[iCl].find(sVal);
-	  if(classIt==classMatrix[iCl].end())classMatrix[iCl][sVal]=nLevels[iCl]++;
-	  posMatrix[iCl++].push_back(classMatrix[iCl][sVal]);
+	  if(classIt==classMatrix[iCl].end()){
+	    classValues[iCl].push_back(sVal);
+	    classMatrix[iCl][sVal]=nLevels[iCl]++;
+	    betaClass[iCl].push_back(0.);
+	  }
+	  iVal=classMatrix[iCl][sVal];
+	  posMatrix[iCl++].push_back(iVal);
 	  break;
 	default:
 	  linestream >> sVal;
@@ -377,8 +421,8 @@ MCMCName=baseName+"_MCMCSamples.txt";
       cout << hmmFileName << " failed to be read  with code " << failCode << endl;
       string hmmFileNameAlt;
       hmmFileNameAlt="HMM" + to_string(HMM.nStates) + "_" + to_string(HMM.nLoci) +".bin";
-      if((failCode=HMM.read(hmmFileNameAlt))!=0) {
-	cout << hmmFileNameAlt << " also failed to be read  with code " << failCode << endl;
+      if((failCode=HMM.read(hmmFileNameAlt))==0) {
+	cout << hmmFileNameAlt << " was found however." << endl;
       }
     }
 
@@ -420,6 +464,10 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	  HMM.loci[i].piVec[l]+=Pval;
 	  HMM.loci[i].pState[I]+=Pval;
 	  HMM.loci[i].pState[J]+=Pval;
+	  if(X[seq][i]<0){
+	    HMM.loci[i].E[I]+=Pval*HMM.loci[i].e[l];
+	    HMM.loci[i].E[J]+=Pval*HMM.loci[i].e[l];
+	  }
 	  if(X[seq][i]==2){
 	    HMM.loci[i].E[I]+=Pval;
 	    HMM.loci[i].E[J]+=Pval;
@@ -538,7 +586,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
     aMapLocus.chrom=Chrom[chr];
     //cout << "qpos "<< chromStart[chr] << " "  << lociMap[chromStart[chr]].pos+1 << " " << lociMap[chromStart[chr+1]-1].pos << endl;
     for(long qPos=lociMap[chromStart[chr]].pos+1;qPos<lociMap[chromStart[chr+1]-1].pos;qPos+=freqQTL,q++){
-      aMapLocus.name="QTL_" + to_string(chr) + "_" + to_string(qPos);
+      aMapLocus.name="QTL_" + to_string(Chrom[chr]) + "_" + to_string(qPos);
       aMapLocus.pos=qPos;
       aMapLocus.isSNP=-1;
       aMapLocus.isQTL=q;
@@ -639,16 +687,21 @@ MCMCName=baseName+"_MCMCSamples.txt";
   }
   long nQTL=activeLoci.size();
 
+  vector<double> yDev(nPheno),gHat(nPheno),gHatSum(nPheno,0.0),gHatSumSq(nPheno,0.0),xVec(nPheno),probClass(nComb);
   
-  vector<double> yDev(nPheno),gHat(nPheno),gHatSum(nPheno,0.0),xVec(nPheno),probClass(nComb);
-  
-  MCMCSamples << "Sample\tmu\tsig2b\tsig2e\tsig2g" << endl;
+  MCMCSamples << "Sample\tmu\tsig2b\tsig2e\tsig2g";
+  for(int iCl=0;iCl<nClass;iCl++) {
+    for(int l=0;l<nLevels[iCl];l++)
+      MCMCSamples << "\t" << className[iCl] + "_" + classValues[iCl][l];  
+  }
+  for(int iCv=0;iCv<nCovariate;iCv++) MCMCSamples << "\t" << covName[iCv];
+  MCMCSamples << endl;
   QTLResults << "Loci\tName\tChrom\tPos\tmodelFreq\tb\twindowFreq";
   for(int l=0;l<nStates;l++) QTLResults << "\tDelta" << l ;
   //for(int l=0;l<nStates;l++) QTLResults << "\thaploFreq" << l ;
   //for(int l=0;l<nStates;l++) QTLResults << "\thaploTemplate" << l ;
   QTLResults << endl;
-  gHatResults << "ID\tgHat"<< endl;
+  gHatResults << "ID\tgHat\tPEV"<< endl;
   vector<double> logPHaplo(nPheno);
 
   vector<int> dVec(nStates,0),deltaZero(nStates,0);
@@ -753,6 +806,11 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	}
 
 	double yDevNew=y[a]-mu;
+	for(int iCl=0;iCl<nClass;iCl++){
+	  yDevNew-=betaClass[iCl][posMatrix[iCl][a]];
+	}
+	for(int iCv=0;iCv<nCovariate;iCv++) yDevNew-=valMatrix[iCv][a]*betaCov[iCv]; 
+	    
 	for(long i=0;i<nQTL;i++){
 	  long locus=activeLoci[i];
 	  int l=XHaploNew[locus];
@@ -801,6 +859,11 @@ MCMCName=baseName+"_MCMCSamples.txt";
     for(int a=0;a<nPheno;a++){
       int seq=phenSeq[a];
       yDev[a]-=mu;
+      for(int iCl=0;iCl<nClass;iCl++){
+	yDev[a]-=betaClass[iCl][posMatrix[iCl][a]];
+      }
+      for(int iCv=0;iCv<nCovariate;iCv++) yDev[a]-=valMatrix[iCv][a]*betaCov[iCv]; 
+      
       gHat[a]=0;
       for(long i=0;i<nQTL;i++){
 	long locus=activeLoci[i];
@@ -887,7 +950,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	int accept=0;
 	if(proposeActive && active) accept=1;
 	else{
-	  if(proposeActive && u.sample() < (1.-1./psum)/(1-inactiveProposal)){
+	  if(proposeActive && u.sample() < (1.-1./psum)/(1.-inactiveProposal)){
 	    accept=1;
 	  }
 	  if(active && u.sample() < (1.-inactiveProposal)/(1.-1./psum)){
@@ -984,6 +1047,33 @@ MCMCName=baseName+"_MCMCSamples.txt";
     for(int a=0;a<nPheno;a++) yDev[a]-=deltaMu;
     mu+=deltaMu;
 
+    //update Class effects;
+    for(int iCl=0;iCl<nClass;iCl++){
+      for(int l=0;l<=nLevels[iCl];l++){
+	double sumXY=0,sumXX=0.0001;
+	for(int a=0;a<nPheno;a++){
+	  if(posMatrix[iCl][a]==l){
+	    sumXY+=rinverse[a]*yDev[a];
+	    sumXX+=rinverse[a];
+	  }
+	}
+	double deltaBeta=sumXY/sumXX+Z.sample()*sqrt(sig2e/sumXX);
+	for(int a=0;a<nPheno;a++) if(posMatrix[iCl][a]==l) yDev[a]-=deltaBeta;
+	betaClass[iCl][l]+=deltaBeta;
+      }
+    }
+    //update Covariate effects;
+    for(int iCv=0;iCv<nCovariate;iCv++){
+      double sumXY=0,sumXX=0;
+      for(int a=0;a<nPheno;a++){
+	sumXY+=rinverse[a]*yDev[a]*valMatrix[iCv][a];
+	sumXX+=rinverse[a]*valMatrix[iCv][a]*valMatrix[iCv][a];
+      }
+      double deltaBeta=sumXY/sumXX+Z.sample()*sqrt(sig2e/sumXX);
+      for(int a=0;a<nPheno;a++) yDev[a]-=deltaBeta*valMatrix[iCv][a];
+      betaCov[iCv]+=deltaBeta;
+    }
+
     //Calc sig2g
     ssg=0;
     double sumg=0;
@@ -997,7 +1087,9 @@ MCMCName=baseName+"_MCMCSamples.txt";
     //update gHatSum
     if(s>=nBurnIn){
       for(int a=0;a<nPheno;a++) {
+	gHat[a]-=sumg;
 	gHatSum[a]+=gHat[a];
+	gHatSumSq[a]+=gHat[a]*gHat[a];
       }
     }
 
@@ -1049,7 +1141,15 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	if((i %10)==9) cout <<endl;
       }
       cout << endl <<endl;
-      if(s%outputFreq==0) MCMCSamples << s << "\t" << mu+sumg <<"\t" << sig2b << "\t" <<sig2e <<"\t" << sig2g << endl; 
+      if(s%outputFreq==0) {
+	MCMCSamples << s << "\t" << mu+sumg <<"\t" << sig2b << "\t" <<sig2e <<"\t" << sig2g ;
+	for(int iCl=0;iCl<nClass;iCl++) {
+	  for(int l=0;l<nLevels[iCl];l++)
+	    MCMCSamples << "\t" << betaClass[iCl][l];  
+	}
+	for(int iCv=0;iCv<nCovariate;iCv++) MCMCSamples << "\t" << betaCov[iCv];
+	MCMCSamples << endl; 
+      }
     }
   }
   double numSampled;
@@ -1070,7 +1170,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
   }
   
   for(int a=0;a<nPheno;a++){
-    gHatResults << phenID[a] << "\t" << gHatSum[a]/numSampled << endl;
+    gHatResults << phenID[a] << "\t" << gHatSum[a]/numSampled << "\t" <<  (gHatSumSq[a]-gHatSum[a]*gHatSum[a]/numSampled)/numSampled << endl;
   }
 }
 
