@@ -4,6 +4,8 @@
 int main(int argc,char **argv){
 
   string genoName,phenoName,mapName;
+
+  int failCode;
   mapName="Map.txt";
   genoName="geno.dat";
   phenoName="BWT.dat";
@@ -129,6 +131,10 @@ MCMCName=baseName+"_MCMCSamples.txt";
   matvec::SESSION.initialize("matvec_trash");
   //filename=mapName;
   MapFile.open(mapName);
+  if(MapFile.fail()) {
+    cout << "Failed to open map file " + mapName << endl;
+    exit(100);
+  }
   getline(MapFile,line);
   while(getline(MapFile,line)){
     stringstream linestr(line);
@@ -169,6 +175,10 @@ MCMCName=baseName+"_MCMCSamples.txt";
 
   //filename="geno.dat";
   Geno.open(genoName);
+  if(Geno.fail()) {
+    cout << "Failed to open genotype file " + genoName << endl;
+    exit(101);
+  }
   cout << "Read in genotype file" << endl;
   getline(Geno,line);
   stringstream linestr(line);
@@ -205,7 +215,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	iVal/=10;
       }
 
-      //if(seq < 1 && i<5) cout << i << " " << val << " " << iVal << " " <<posVector[i] << endl;
+      // if(seq < 1 && i<5) cout << i << " " << val << " " << iVal << " " <<posVector[i] << endl;
       //if(seq < 5 && posVector[i]<5 && posVector[i]> -1) cout << i << " " << val << " " << iVal << " " <<posVector[i] <<"*"<< endl;
       if(posVector[i]>-1)X.back()[posVector[i]]=iVal;
       i++;
@@ -215,14 +225,14 @@ MCMCName=baseName+"_MCMCSamples.txt";
 
   cout << endl;
   for(int i=0;i<10;i++){
-    cout << ID[i];
+    cout << setw(10) << ID[i];
     for(int j=0;j<10;j++){
       cout << " " <<setw(2) << X[i][j];
     } 
     cout <<"    ";
     for(int j=10;j>0;j--){
       
-      cout << " " <<setw(2) << X[i][mapOrder.size()-j];
+      cout << " " <<setw(3) << X[i][mapOrder.size()-j];
     }
     cout << endl;
   }
@@ -250,6 +260,10 @@ MCMCName=baseName+"_MCMCSamples.txt";
   //filename="BWT.dat";
   cout << "Read in phenotype file" << endl;
   Pheno.open(phenoName);
+  if(Pheno.fail()){
+    cout << "Failed to open phenotype file " + phenoName << endl;
+    exit(102);
+  }
   getline(Pheno,line);
   vector<double> y,Xmu,rinverse;
   vector<int> phenSeq;
@@ -415,7 +429,6 @@ MCMCName=baseName+"_MCMCSamples.txt";
     HMM.resetP();
 
     string hmmFileName;
-    int failCode;
     hmmFileName="HMMIM" + to_string(HMM.nStates) + "_" + to_string(HMM.nLoci) +".bin";
     if((failCode=HMM.read(hmmFileName))!=0) {
       cout << hmmFileName << " failed to be read  with code " << failCode << endl;
@@ -465,8 +478,8 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	  HMM.loci[i].pState[I]+=Pval;
 	  HMM.loci[i].pState[J]+=Pval;
 	  if(X[seq][i]<0){
-	    HMM.loci[i].E[I]+=Pval*HMM.loci[i].e[l];
-	    HMM.loci[i].E[J]+=Pval*HMM.loci[i].e[l];
+	    HMM.loci[i].E[I]+=Pval*HMM.loci[i].e[I];
+	    HMM.loci[i].E[J]+=Pval*HMM.loci[i].e[J];
 	  }
 	  if(X[seq][i]==2){
 	    HMM.loci[i].E[I]+=Pval;
@@ -895,6 +908,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	lhsVs=lhsVsArray[i];
       }
       uSmp=u.sample();
+      
       if(uSmp>inactiveProposal) proposeActive=1;
       if(proposeActive || active || computeLhsV){
 	for(int a=0;a<nPheno;a++){
@@ -922,7 +936,8 @@ MCMCName=baseName+"_MCMCSamples.txt";
       }
       if(active || proposeActive){
 	int nDeltaStates=deltaStates.size();
-	double psum=1.;
+	double psum=0;
+	double maxAoverI=0.;
 	vector<double> AoverIVec(nDeltaStates,log((1.-pi)/pi)-.5*log(sig2b)-log((double) nDeltaStates));
 	for(int sd=0;sd<nDeltaStates;sd++){
 	  double lhs=sig2e/sig2b;
@@ -941,19 +956,27 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	  rhs/=sig2e;
 	  lhs/=sig2e;
 	  AoverIVec[sd]+=0.5*(rhs*rhs/lhs-log(lhs));
-	  AoverIVec[sd]=exp(AoverIVec[sd]);
+	  if(AoverIVec[sd]> maxAoverI) maxAoverI=AoverIVec[sd];
+	  //AoverIVec[sd]=exp(AoverIVec[sd]);
+	  //psum+=AoverIVec[sd];
+	}
+	for(int sd=0;sd<nDeltaStates;sd++){
+	  AoverIVec[sd]=exp(AoverIVec[sd]-maxAoverI);
 	  psum+=AoverIVec[sd];
 	}
+	//double pSumScaled=psum;
+	//psum*=exp(maxAoverI);
+	//psum+=1.;
      
       
 
 	int accept=0;
 	if(proposeActive && active) accept=1;
 	else{
-	  if(proposeActive && u.sample() < (1.-1./psum)/(1.-inactiveProposal)){
+	  if(proposeActive && u.sample() < (psum/(psum+exp(-maxAoverI)))/(1.-inactiveProposal)){
 	    accept=1;
 	  }
-	  if(active && u.sample() < (1.-inactiveProposal)/(1.-1./psum)){
+	  if(active && u.sample() < (1.-inactiveProposal)/(psum/(psum+exp(-maxAoverI)))){
 	    accept=1;
 	  }
 	}
@@ -972,7 +995,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	  else{
 	    
 	    uSmp=u.sample();
-	    uSmp*=psum-1.;
+	    uSmp*=psum;
 	    qtlVec[i].active=1;
 	    activeLoci.push_back(i);
 	    //uSmp-=1.;
@@ -1131,15 +1154,19 @@ MCMCName=baseName+"_MCMCSamples.txt";
       cout << setprecision(8) << "Sig2b: " << sig2b << " Sig2e: " << sig2e << " Sig2g: " << sig2g << endl;
       cout << "mu " << mu << endl;
       cout << "number Active: " <<  nQTL << " Number Rejected A2I: " << nRejectA2I<< " Number Rejected I2A: " << nRejectI2A << endl;
-      for(int i=0; i< 100  ; i++ ) {
+      int nQTLPrint=100;
+      if(nQTLPrint>nQTL) nQTLPrint=nQTL;
+      for(int i=0; i< nQTLPrint  ; i++ ) {
 	cout  << " " << setw(6) << activeLoci[i];
 	if((i %10)==9) cout <<endl;
       }
       cout << endl;
-      for(int i=0; i< 100  ; i++ ) {
-	cout  << " " << setw(6) << activeLoci[nQTL-100+i];
+      if(nQTLPrint>nQTL-100)nQTLPrint=nQTL-100;
+      for(int i=0; i< nQTLPrint  ; i++ ) {
+	cout  << " " << setw(6) << activeLoci[nQTL-nQTLPrint+i];
 	if((i %10)==9) cout <<endl;
       }
+      
       cout << endl <<endl;
       if(s%outputFreq==0) {
 	MCMCSamples << s << "\t" << mu+sumg <<"\t" << sig2b << "\t" <<sig2e <<"\t" << sig2g ;
@@ -1254,10 +1281,12 @@ void forward(const long start, const long end,hmm &HMM, const vector<int> &X,con
 	  val=0;
 	  int k=0;
 	  for(int I2=0;I2<nStates;I2++){
-	    for(int J2=0;J2<=I2;J2++,k++){
-	      val+=HMM.loci[i-1].f[k]*transSingle[I1==I2]*transSingle[J1==J2];
-	      if(I2!=J2) val+=HMM.loci[i-1].f[k]*transSingle[I1==J2]*transSingle[J1==I2];
+	    
+	    for(int J2=0;J2<I2;J2++,k++){
+	      val+=HMM.loci[i-1].f[k]*(transSingle[I1==I2]*transSingle[J1==J2]+transSingle[I1==J2]*transSingle[J1==I2]);
 	    }
+	    val+=HMM.loci[i-1].f[k]*transSingle[I1==I2]*transSingle[J1==I2];
+	    k++;
 	  }
 	  int snpLoc=(*lociMapPt)[i].isSNP;
 	  if(snpLoc>=0) val*=HMM.emit(snpLoc,l,X[snpLoc]);
