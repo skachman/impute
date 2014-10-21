@@ -2,15 +2,17 @@
 #include <fstream>
 #include <string>
 #include <sstream>
+#include <iomanip>
+#include <iostream>
 #include <vector>
 #include <list>
 #include <random>
 #include <unordered_map>
 #include <algorithm>
-#include <matvec/mim.h>
-#include <matvec/parmMap.h>
-#include <matvec/session.h>
-#include <matvec/statdist.h>
+//#include <matvec/mim.h>
+//#include <matvec/parmMap.h>
+//#include <matvec/session.h>
+//#include <matvec/statdist.h>
 #include <time.h>
 #include <dirent.h>
 #include <cmath>
@@ -174,14 +176,19 @@ public:
   };
   
   void initLoci(double alpha,double beta) {
-    matvec::BetaDist betaDist(alpha,beta);
+    random_device rd;
+    mt19937 gen(rd());
+    gamma_distribution<double> gamA(alpha,1.),gamB(beta,1.);
+    
     hmmLoci locus(nStates,nComb);
     loci.resize(nLoci,locus);
     for(long i=0;i<nLoci;i++) {
       loci[i].e.assign(nStates,0.0);
       for(int l=0;l<nStates;l++){
 	double val;
-	val=betaDist.sample();
+	double g1=gamA(gen);
+	double g2=gamB(gen);
+	val=g1/(g1+g2);
 	loci[i].e[l]=val;
       }
     }
@@ -203,6 +210,7 @@ public:
 typedef unordered_map<string,int> idmap;
 
 void forward(const long start, const long end,hmm &HMM, const vector<int> &X,const vector<double> &picomb);
+void forwardVec(const long start, const long end,hmm &HMM, const vector<int> &X,const vector<double> &picomb,vector< vector<double> > &fVec);
 void backward(const long start, const long end,hmm &HMM, const vector<int> &X,const vector<double> &picomb);
 void calcPComb(int nComb,hmmLoci &HMMlocus,vector<double> &P);
 

@@ -6,8 +6,10 @@
 ####### Compiler, tools and options
 
 MATVECLOC     = matvec
-CC            = clang
-CXX           = clang++
+#CC            = clang 
+#CXX           = clang++ 
+CC            = gcc -fopnemp
+CXX           = g++ -fopenmp -std=c++11
 DEFINES       = 
 CFLAGS        = -pipe -g -Wall -W $(DEFINES)
 #CXXFLAGS      = -pipe -O3 -ftree-vectorize -ftree-vectorizer-verbose=5 -funsafe-math-optimizations -g  -arch x86_64 $(DEFINES) # -Wall -W
@@ -15,9 +17,10 @@ CXXFLAGS      = -pipe -O3 -funsafe-math-optimizations -g  -arch x86_64 $(DEFINES
 #CXXFLAGS      = -pipe  -g  -arch x86_64 $(DEFINES) #-Wall -W
 
 INCPATH       =  -I/opt/local/include/eigen3/ -I/opt/local/include -I. -Iinclude
-LINK          = clang++
+#LINK          = clang++
+LINK          = g++   -fopenmp
 LFLAGS        = -prebind
-LIBS          = $(SUBLIBS) /opt/local/lib/libmatvec.a 
+LIBS          = $(SUBLIBS) #/opt/local/lib/libmatvec.a 
 AR            = ar cq
 RANLIB        = ranlib -s
 TAR           = tar -cf
@@ -53,7 +56,7 @@ OBJECTS       = $(OBJECTS_DIR)impute.o
 
 DESTDIR       = 
 
-TARGET        = bin/impute 
+TARGET        = #bin/impute 
 
 first: all
 ####### Implicit rules
@@ -77,7 +80,7 @@ first: all
 
 ####### Build rules
 
-all: Makefile $(TARGET) bin/imputeMCMC bin/BayesIM # bin/BayesIM-new # bin/imputeTwoTrait
+all: Makefile $(TARGET) bin/BayesIM # bin/imputeMCMC bin/BayesIM-new # bin/imputeTwoTrait
 
 $(TARGET):  $(OBJECTS)  
 	$(LINK) $(LFLAGS) -o $(TARGET) $(OBJECTS) $(OBJCOMP) $(LIBS)
