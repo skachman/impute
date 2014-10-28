@@ -238,7 +238,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
       posVector.push_back(-1);
     }
     //if(ipos<10) cout << ipos << " "  << id << " " << iVal << endl;
-    //if(iVal >-1 && iVal < 10) cout << ipos << " "  << id <<  " " << iVal <<"*" <<endl;
+    //if(iVal >-1 && iVal < 10) cout << ipos << " "  << id <<  " " << iVal << " " << posVector[ipos] <<"*" <<endl;
     ipos++;
   }
   int nPos=posVector.size();
@@ -254,7 +254,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
     if((seq%200)==0) cout << seq << endl;
     while(linestr >> val){
       if(i >=nPos) {
-	cout << id << " " << i << endl;
+	cout <<"Genotype record is longer than expected, check record with ID: " << id << " " << i << endl;
 	exit(101);
       }
       iVal=-1;
@@ -263,11 +263,12 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	iVal/=10;
       }
 
-      // if(seq < 1 && i<5) cout << i << " " << val << " " << iVal << " " <<posVector[i] << endl;
+      //  if(seq < 1 && i<5) cout << i << " " << val << " " << iVal << " " <<posVector[i] << endl;
       //if(seq < 5 && posVector[i]<5 && posVector[i]> -1) cout << i << " " << val << " " << iVal << " " <<posVector[i] <<"*"<< endl;
       
       if(posVector[i]>-1) row[posVector[i]]=iVal;
       //X.back()[posVector[i]]=iVal;
+      i++;
     }
     X.push_back(row);
     
@@ -1134,9 +1135,100 @@ MCMCName=baseName+"_MCMCSamples.txt";
       if(s>=nBurnIn)qtlSumVec[i].updateSum(qtlVec[i]);
       
     }
-    
-    
-    computeLhsV=0;
+    if(0){
+      //Jiggle QTL location
+      nQTL=activeLoci.size();
+      for(int q=0;q<nQTL;q++){
+	int i=activeLoci[q];
+	double ssp=0.,ssc=0.,ssn=0.;
+	double probp=0.,probc=1.,probn=0;
+	double b=qtlVec[i].b;
+	dVec=qtlVec[i].delta;
+	if(i>0 && !qtlVec[i-1].active){
+	  //cout << "i-1 " << i-1 << " " << q << endl;
+	  for(int a=0;a<nPheno;a++){
+	    int seqClass=XHaplo[i][a];
+	    int seq0Class=XHaplo[i-1][a]; 
+	    if(seqClass != seq0Class){
+	      int I=HMM.stateI[seqClass];
+	      int J=HMM.stateJ[seqClass];
+	      int I0=HMM.stateI[seq0Class];
+	      int J0=HMM.stateJ[seq0Class];
+	      double yd=yDev[a]-((dVec[I0]+dVec[J0])-(dVec[I]+dVec[J]))*b;
+	      ssp+=yd*yd-yDev[a]*yDev[a];
+	    }
+	  }
+	  //cout << " Done" << endl;
+	  probp=exp(-.5*ssp/sig2e);
+	}
+	if((i+1)<nQTLLoci && !qtlVec[i+1].active){
+	  //cout << "i+1 " << i+1 << " "<< nQTLLoci << " "  << q << endl;
+	  for(int a=0;a<nPheno;a++){
+	    int seqClass=XHaplo[i][a];
+	    int seq0Class=XHaplo[i+1][a]; 
+	    if(seqClass != seq0Class){
+	      int I=HMM.stateI[seqClass];
+	      int J=HMM.stateJ[seqClass];
+	      int I0=HMM.stateI[seq0Class];
+	      int J0=HMM.stateJ[seq0Class];
+	      double yd=yDev[a]-((dVec[I0]+dVec[J0])-(dVec[I]+dVec[J]))*b;
+	      ssn+=yd*yd-yDev[a]*yDev[a];
+	    }
+	  }
+	  probn=exp(-.5*ssn/sig2e);
+	  //	  cout << " Done" << endl;
+	}
+	double sump=probp+probc+probn;
+	double uSmp=u(gen)*sump;
+	if(uSmp<(probp+probn)){
+	  if(uSmp<probp){
+	    //cout << "i-1 "<< i-1 << " " << q << endl;
+	    activeLoci[q]=i-1;
+	    qtlVec[i-1].b=b;
+	    qtlVec[i-1].active=1;
+	    qtlVec[i-1].delta=dVec;
+	    for(int a=0;a<nPheno;a++){
+	      int seqClass=XHaplo[i][a];
+	      int seq0Class=XHaplo[i-1][a]; 
+	      if(seqClass != seq0Class){
+		int I=HMM.stateI[seqClass];
+		int J=HMM.stateJ[seqClass];
+		int I0=HMM.stateI[seq0Class];
+		int J0=HMM.stateJ[seq0Class];
+		yDev[a]-=((dVec[I0]+dVec[J0])-(dVec[I]+dVec[J]))*b;
+		gHat[a]+=((dVec[I0]+dVec[J0])-(dVec[I]+dVec[J]))*b;
+	      }
+	    }
+	    //cout << "-" << endl;
+	  }
+	  else{
+
+	    //cout << "i+1 "<< i+1 << " " << q << endl;
+	    activeLoci[q]=i+1;
+	    qtlVec[i+1].b=b;
+	    qtlVec[i+1].active=1;
+	    qtlVec[i+1].delta=dVec;
+	    for(int a=0;a<nPheno;a++){
+	      int seqClass=XHaplo[i][a];
+	      int seq0Class=XHaplo[i+1][a]; 
+	      if(seqClass != seq0Class){
+		int I=HMM.stateI[seqClass];
+		int J=HMM.stateJ[seqClass];
+		int I0=HMM.stateI[seq0Class];
+		int J0=HMM.stateJ[seq0Class];
+		yDev[a]-=((dVec[I0]+dVec[J0])-(dVec[I]+dVec[J]))*b;
+		gHat[a]+=((dVec[I0]+dVec[J0])-(dVec[I]+dVec[J]))*b;
+	      }
+	    }
+
+	    //cout << "-" << endl;
+	  }
+	  qtlVec[i].b=0;
+	  qtlVec[i].active=0;
+	}
+      }
+    }
+      computeLhsV=0;
     //update mu;
     double sumXY=0,sumXX=0;
     for(int a=0;a<nPheno;a++){
