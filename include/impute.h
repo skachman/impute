@@ -39,6 +39,13 @@ class locusMap{
   
 };
 
+class haploMapLocus{
+ public:
+  vector<int> start;
+  vector<int> a;
+  haploMapLocus(int ns=0,int np=0){start.resize(ns+1,0);a.resize(2*np);};
+};
+
 bool locusMapCompare(locusMap &A,locusMap &B);
 
 class qtlLocus{
@@ -50,6 +57,15 @@ class qtlLocus{
   void init(int nc,double sig2b,double pi);
   void init(int nc);
   void updateSum(const qtlLocus &A);
+};
+
+class qtlResultLocus{
+ public:
+  double b;
+  vector<double> delta;
+  double modelFreq;
+  void init(int ns){delta.resize(ns);};
+
 };
 
 class qtl2Locus{
@@ -209,8 +225,9 @@ public:
   
 typedef unordered_map<string,int> idmap;
 
-void forward(const long start, const long end,hmm &HMM, const vector<int> &X,const vector<double> &picomb);
-void forwardVec(const long start, const long end,hmm &HMM, const vector<int> &X,const vector<double> &picomb,vector< vector<double> > &fVec);
+void  forward(const long start, const long end,hmm &HMM, const vector<int> &X,const vector<double> &picomb);
 void backward(const long start, const long end,hmm &HMM, const vector<int> &X,const vector<double> &picomb);
+void  forwardVec(const long start, const long end,hmm &HMM, const vector<int> &X,const vector<double> &picomb,vector< vector<double> > &fVec);
+void backwardVec(const long start, const long end,hmm &HMM, const vector<int> &X,const vector<double> &picomb,vector< vector<double> > &bVec);
 void calcPComb(int nComb,hmmLoci &HMMlocus,vector<double> &P);
 

@@ -80,7 +80,7 @@ first: all
 
 ####### Build rules
 
-all: Makefile $(TARGET) bin/BayesIM # bin/imputeMCMC bin/BayesIM-new # bin/imputeTwoTrait
+all: Makefile $(TARGET) bin/BayesIM bin/PullRegions # bin/imputeMCMC bin/BayesIM-new # bin/imputeTwoTrait
 
 $(TARGET):  $(OBJECTS)  
 	$(LINK) $(LFLAGS) -o $(TARGET) $(OBJECTS) $(OBJCOMP) $(LIBS)
@@ -88,8 +88,11 @@ $(TARGET):  $(OBJECTS)
 bin/imputeMCMC:   $(OBJECTS_DIR)imputeMCMC.o	 
 	$(LINK) $(LFLAGS) -o bin/imputeMCMC  $(OBJECTS_DIR)imputeMCMC.o $(OBJCOMP) $(LIBS)
 
-bin/BayesIM:   $(OBJECTS_DIR)BayesIM.o	 $(OBJECTS_DIR)Configuration.o	 
-	$(LINK) $(LFLAGS) -o bin/BayesIM  $(OBJECTS_DIR)BayesIM.o $(OBJECTS_DIR)Configuration.o $(OBJCCOMP) $(LIBS)
+bin/BayesIM:   $(OBJECTS_DIR)BayesIM.o	 $(OBJECTS_DIR)Configuration.o	  $(OBJECTS_DIR)utility.o	
+	$(LINK) $(LFLAGS) -o bin/BayesIM  $(OBJECTS_DIR)BayesIM.o $(OBJECTS_DIR)Configuration.o $(OBJECTS_DIR)utility.o $(LIBS)
+
+bin/PullRegions:   $(OBJECTS_DIR)PullRegions.o	 $(OBJECTS_DIR)Configuration.o	  $(OBJECTS_DIR)utility.o	
+	$(LINK) $(LFLAGS) -o bin/PullRegions  $(OBJECTS_DIR)PullRegions.o $(OBJECTS_DIR)Configuration.o $(OBJECTS_DIR)utility.o $(LIBS)
 
 bin/BayesIM-new:   $(OBJECTS_DIR)BayesIM-new.o	 $(OBJECTS_DIR)Configuration.o	 
 	$(LINK) $(LFLAGS) -o bin/BayesIM-new  $(OBJECTS_DIR)BayesIM-new.o $(OBJECTS_DIR)Configuration.o $(OBJCOMP) $(LIBS)
@@ -154,8 +157,14 @@ $(OBJECTS_DIR)imputeTwoTrait.o: $(SRC_DIR)imputeTwoTrait.cpp $(HEADER_DIR)impute
 
 
 
+$(OBJECTS_DIR)utility.o: $(SRC_DIR)utility.cpp $(HEADER_DIR)impute.h
+	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o $(OBJECTS_DIR)utility.o $(SRC_DIR)utility.cpp 
+
 $(OBJECTS_DIR)BayesIM.o: $(SRC_DIR)BayesIM.cpp $(HEADER_DIR)impute.h $(HEADER_DIR)Configuration.h
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o $(OBJECTS_DIR)BayesIM.o $(SRC_DIR)BayesIM.cpp 
+
+$(OBJECTS_DIR)PullRegions.o: $(SRC_DIR)PullRegions.cpp $(HEADER_DIR)impute.h $(HEADER_DIR)Configuration.h
+	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o $(OBJECTS_DIR)PullRegions.o $(SRC_DIR)PullRegions.cpp 
 
 $(OBJECTS_DIR)BayesIM-new.o: $(SRC_DIR)BayesIM-new.cpp $(HEADER_DIR)impute.h $(HEADER_DIR)Configuration.h
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o $(OBJECTS_DIR)BayesIM-new.o $(SRC_DIR)BayesIM-new.cpp 
@@ -171,8 +180,13 @@ $(OBJECTS_DIR)imputeMCMC.o: $(SRC_DIR)imputeMCMC.cpp $(HEADER_DIR)impute.h
 
 ####### Install
 
-install:   bin/BayesIM
-	cp bin/BayesIM $(BINARY_DIR) 
+install:   $(BINARY_DIR)BayesIM  $(BINARY_DIR)PullRegions
+
+$(BINARY_DIR)BayesIM: bin/BayesIM	
+	cp bin/BayesIM $(BINARY_DIR)
+
+$(BINARY_DIR)PullRegions: bin/PullRegions	
+	cp bin/PullRegions $(BINARY_DIR) 
 
 uninstall:   FORCE
 
