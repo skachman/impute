@@ -720,7 +720,8 @@ MCMCName=baseName+"_MCMCSamples.txt";
 
   XHaplo.resize(nQTLLoci);
   for(long i=0;i<nQTLLoci;i++) XHaplo[i].resize(nPheno);
-
+  //vector<vector<double> > XHaploT(nPheno);
+  //for(int a=0;a<nPheno;a++) XHaploT[a].resize(nLoci);
   //haploMapLocus XHaploMapLocus(nStates,nPheno);
   //vector<haplMapLocus > XHaploMap(nQTLLoci,XHaploMapLocus);
   //vector<int> tmpState(2*nPheno);
@@ -770,7 +771,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
   long nQTL=activeLoci.size();
 
   vector<double> yDev(nPheno),gHat(nPheno),gHatSum(nPheno,0.0),gHatSumSq(nPheno,0.0),xVec(nPheno),probClass(nComb);
-  
+  double *yDevpt,*gHatpt;
   MCMCSamples << "Sample\tmu\tsig2b\tsig2e\tsig2g";
   for(int iCl=0;iCl<nClass;iCl++) {
     if(classRandom[iCl] > -1){
@@ -922,7 +923,10 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	}
 	uSmp=u(gen);
 	if(s==0 || log(uSmp)<-.5*(yDevNew*yDevNew-yDev[a]*yDev[a])*rinverse[a]/sig2e){
-	  for(long i=0;i<nQTLLoci;i++) XHaplo[i][a]=XHaploNew[i];
+	  for(long i=0;i<nQTLLoci;i++) {
+	    XHaplo[i][a]=XHaploNew[i];
+	    //XHaploT[a][i]=XHaploNew[i];
+	  }
 	  logPHaplo[a]=logPNewvsOld;
 	  vecFlipped[a]=1;
 	}
@@ -965,24 +969,30 @@ MCMCName=baseName+"_MCMCSamples.txt";
     nQTL=activeLoci.size();
     yDev=y;
     gHat.assign(nPheno,0.);
-    //#pragma omp parallel for 
+#pragma omp parallel for schedule(static) 
     for(int a=0;a<nPheno;a++){
+      double ysum=0;
       int seq=phenSeq[a];
-      yDev[a]-=mu;
-      for(int iCl=0;iCl<nClass;iCl++){
-	yDev[a]-=betaClass[iCl][posMatrix[iCl][a]];
-      }
-      for(int iCv=0;iCv<nCovariate;iCv++) yDev[a]-=valMatrix[iCv][a]*betaCov[iCv]; 
-      
-      gHat[a]=0;
+      //#pragma omp parallel for reduction (+:ysum)
       for(long i=0;i<nQTL;i++){
 	long locus=activeLoci[i];
 	int seqClass=XHaplo[locus][a];
 	int I=HMM.stateI[seqClass];
 	int J=HMM.stateJ[seqClass];
-	yDev[a]-=(qtlVec[locus].delta[I]+qtlVec[locus].delta[J])*qtlVec[locus].b;
+	ysum-=(qtlVec[locus].delta[I]+qtlVec[locus].delta[J])*qtlVec[locus].b;
       }
+
+      ysum-=mu;
+      for(int iCl=0;iCl<nClass;iCl++){
+	ysum-=betaClass[iCl][posMatrix[iCl][a]];
+      }
+      for(int iCv=0;iCv<nCovariate;iCv++) ysum-=valMatrix[iCv][a]*betaCov[iCv]; 
+      
+
+   
+      yDev[a]+=ysum;
     }
+    
 
     activeLoci.resize(0);
     int nRejectI2A=0;
@@ -1009,48 +1019,33 @@ MCMCName=baseName+"_MCMCSamples.txt";
       
       if(!active && uSmp>inactiveProposal) proposeActive=1;
       if(proposeActive || active || computeLhsV){
-	vector<double> rhsVtemp=rhsV;
-	vector<double> lhsVstemp=lhsVs;
-	vector<double> lhsVtemp=lhsV;
-#pragma omp parallel firstprivate(rhsVtemp,lhsVstemp,lhsVtemp)
-	{
-#pragma omp for
-	  for(int a=0;a<nPheno;a++){
-	    //double ydev=yDev[a];
-	    //int seq=phenSeq[a];
-	    int seqClass=XHaplo[i][a];
-	    int I=HMM.stateI[seqClass];
-	    int J=HMM.stateJ[seqClass];
-	    if(active){
-	      double xb=(qtlVec[i].delta[I]+qtlVec[i].delta[J])*b;
-	      yDev[a]+=xb;
-	    }
-	    rhsVtemp[I]+=yDev[a]*rinverse[a];
-	    rhsVtemp[J]+=yDev[a]*rinverse[a];
-	    if(computeLhsV){
-	      lhsVstemp[I]+=rinverse[a];
-	      lhsVstemp[J]+=rinverse[a];
-	      lhsVtemp[seqClass]+=2.0*rinverse[a];
-	    }
+	double *rhsVpt=rhsV.data();
+	double *lhsVspt=lhsVs.data();
+	double *lhsVpt=lhsV.data();
+	yDevpt=yDev.data();
+
+	//#pragma omp parallel for schedule(static)
+	for(int a=0;a<nPheno;a++){
+	  double ydev=yDev[a];
+	  //int seq=phenSeq[a];
+	  
+	  int seqClass=XHaplo[i][a];
+	  int I=HMM.stateI[seqClass];
+	  int J=HMM.stateJ[seqClass];
+	  if(active){
+	    double xb=(qtlVec[i].delta[I]+qtlVec[i].delta[J])*b;
+	    ydev+=xb;
+	    *(yDevpt+a)=ydev;
 	  }
-#pragma omp critcal(updaterhs)
-	  {
-	    for(int k=0;k<nStates;k++){
-	      rhsV[k]+=rhsVtemp[k];
-	    }
-	  }
+	  *(rhsVpt+I)+=ydev*rinverse[a];
+	  *(rhsVpt+J)+=ydev*rinverse[a];
 	  if(computeLhsV){
-#pragma omp critical(updatelhs)
-	    {
-	      for(int k=0;k<nStates;k++){
-		lhsVs[k]+=lhsVstemp[k];
-	      }
-	      for(int l=0;l<nComb;l++){
-		lhsV[l]+=lhsVtemp[l];
-	      }
-	    }
+	    *(lhsVspt+I)+=rinverse[a];
+	    *(lhsVspt+J)+=rinverse[a];
+	    *(lhsVpt+seqClass)+=2.0*rinverse[a];
 	  }
-	}  // matches omp parallel
+	}
+	  // matches omp parallel
 	  if(computeLhsV){
 	    lhsVArray[i]=lhsV;
 	    lhsVsArray[i]=lhsVs;
@@ -1167,14 +1162,16 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	    
 	    qtlVec[i].b=b;
 	    ssb+=b*b;
-	    //	    #pragma omp parallel for
+	    yDevpt=yDev.data();
+            gHatpt=gHat.data();
+	    //#pragma omp parallel for schedule(static)
 	    for(int a=0;a<nPheno;a++){
 	      //int seq=phenSeq[a];
 	      int seqClass=XHaplo[i][a];
 	      int I=HMM.stateI[seqClass];
 	      int J=HMM.stateJ[seqClass];
-	      yDev[a]-=(dVec[I]+dVec[J])*b;
-	      gHat[a]+=(dVec[I]+dVec[J])*b;
+	      *(yDevpt+a)-=(dVec[I]+dVec[J])*b;
+	      *(gHatpt+a)+=(dVec[I]+dVec[J])*b;
 	    }
 	    
 	  }
@@ -1218,7 +1215,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	}
 	if((i+1)<nQTLLoci && !qtlVec[i+1].active){
 	  //cout << "i+1 " << i+1 << " "<< nQTLLoci << " "  << q << endl;
-	  //#pragma omp parallel for reduction (+:ssn)
+	  //#pragma omp parallel for reduction (+:ssn) schedule(static)
 	  for(int a=0;a<nPheno;a++){
 	    int seqClass=XHaplo[i][a];
 	    int seq0Class=XHaplo[i+1][a]; 
@@ -1243,7 +1240,10 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	    qtlVec[i-1].b=b;
 	    qtlVec[i-1].active=1;
 	    qtlVec[i-1].delta=dVec;
-	    //#pragma omp parallel for 
+
+	    yDevpt=yDev.data();
+	    gHatpt=gHat.data();
+	    //#pragma omp parallel for schedule(static) 
 	    for(int a=0;a<nPheno;a++){
 	      int seqClass=XHaplo[i][a];
 	      int seq0Class=XHaplo[i-1][a]; 
@@ -1265,7 +1265,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	    qtlVec[i+1].b=b;
 	    qtlVec[i+1].active=1;
 	    qtlVec[i+1].delta=dVec;
-	    //#pragma omp parallel for 
+	    //#pragma omp parallel for schedule(static) 
 	    for(int a=0;a<nPheno;a++){
 	      int seqClass=XHaplo[i][a];
 	      int seq0Class=XHaplo[i+1][a]; 
@@ -1289,14 +1289,15 @@ MCMCName=baseName+"_MCMCSamples.txt";
       computeLhsV=0;
     //update mu;
     double sumXY=0,sumXX=0;
-    //#pragma omp parallel for reduction (+:sumXY,sumXX)
+    //#pragma omp parallel for reduction (+:sumXY,sumXX) schedule(static)
     for(int a=0;a<nPheno;a++){
       sumXY+=rinverse[a]*yDev[a];
       sumXX+=rinverse[a];
     }
     double deltaMu=sumXY/sumXX+Z(gen)*sqrt(sig2e/sumXX);
-    //#pragma omp parallel for 
-    for(int a=0;a<nPheno;a++) yDev[a]-=deltaMu;
+    yDevpt=yDev.data();
+    //#pragma omp parallel for schedule(static)
+    for(int a=0;a<nPheno;a++) *(yDevpt+a)-=deltaMu;
     mu+=deltaMu;
     
     //update Class effects;
@@ -1316,16 +1317,19 @@ MCMCName=baseName+"_MCMCSamples.txt";
       for(int l=0;l<nLevels[iCl];l++){
 	betaClass[iCl][l]=sumXY[l]/sumXX[l]+Z(gen)*sqrt(sig2e/sumXX[l]);
       }
+      //#pragma omp parallel for schedule(static)
       for(int a=0;a<nPheno;a++)  yDev[a]-=betaClass[iCl][posMatrix[iCl][a]];
     }
     //update Covariate effects;
     for(int iCv=0;iCv<nCovariate;iCv++){
       double sumXY=0,sumXX=0;
+      //#pragma omp parallel for schedule(static) reduction(+:sumXX,sumXY)
       for(int a=0;a<nPheno;a++){
 	sumXY+=rinverse[a]*yDev[a]*valMatrix[iCv][a];
 	sumXX+=rinverse[a]*valMatrix[iCv][a]*valMatrix[iCv][a];
       }
       double deltaBeta=sumXY/sumXX+Z(gen)*sqrt(sig2e/sumXX);
+      //#pragma omp paralllel for schedule(static)
       for(int a=0;a<nPheno;a++) yDev[a]-=deltaBeta*valMatrix[iCv][a];
       betaCov[iCv]+=deltaBeta;
     }
@@ -1333,6 +1337,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
     //Calc sig2g
     ssg=0;
     double sumg=0;
+    //#pragma omp parallel for schedule(static) reduction(+:ssg,sumg)
     for(int a=0;a<nPheno;a++) {
       ssg+=gHat[a]*gHat[a];
       sumg+=gHat[a];
@@ -1342,6 +1347,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
 
     //update gHatSum
     if(s>=nBurnIn){
+      //#pragma omp parallel for schedule(static)
       for(int a=0;a<nPheno;a++) {
 	gHat[a]-=sumg;
 	gHatSum[a]+=gHat[a];
@@ -1368,8 +1374,10 @@ MCMCName=baseName+"_MCMCSamples.txt";
     //update sig2e;
     nuTilde=((double) nPheno)+nusig2e;
     //cout << "sse " << sse << endl; 
-    for(int a=0;a<nPheno;a++)  sse+=yDev[a]*yDev[a]*rinverse[a];
-     
+    double ssePart=0;
+    //#pragma omp parallel for schedule(static) reduction(+:ssePart) 
+    for(int a=0;a<nPheno;a++)  ssePart+=yDev[a]*yDev[a]*rinverse[a];
+    sse+=ssePart;
     
 
     double X2;
