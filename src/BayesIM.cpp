@@ -510,61 +510,88 @@ MCMCName=baseName+"_MCMCSamples.txt";
 
   //Estimation
   int nComb=HMM.nComb;
-  
+
+  vector<double> locusf(nComb),locusE(nStates);
+  vector< vector<double> > f(nLoci,locusf),b(nLoci,locusf);
+  vector<vector<double> > E(nLoci,locusE),pState(nLoci,locusE),piVec(nLoci,locusf);
   vector<double> pVec(nComb);
   for(int iter=0;iter<nIter;iter++){
     cout << "Iteration " << iter <<endl;
     HMM.initBW(priorCount);
-    
-    for(int seq=0;seq< X.size();seq++){
-      HMM.initSeq();
+     for(long i=0;i<nLoci;i++){
+      E[i].assign(nStates,0.);
+      pState[i].assign(nStates,0.);
+      piVec[i].assign(nComb,0.);
+    }
+    HMM.initSeq();
 
-      forward(0,nLoci,HMM,X[seq],HMM.piComb);
-      backward(0, nLoci,HMM,X[seq],HMM.piComb);
-
-      vector<double> Pvec(nComb);
-
-      //Compute Probabilities and estimates
-      
-      for(long i=0;i<nLoci;i++){
-	double Psum=0;
-	double Pval;
-	for(int l=0;l<nComb;l++){
-	  Psum+=HMM.loci[i].f[l]*HMM.loci[i].b[l];
-	}
-	for(int l=0;l<nComb;l++){
-	  int I=HMM.stateI[l];
-	  int J=HMM.stateJ[l];
-	  Pval=HMM.loci[i].f[l]*HMM.loci[i].b[l]/Psum;
-	  Pvec[l]=Pval;
-	  HMM.loci[i].piVec[l]+=Pval;
-	  HMM.loci[i].pState[I]+=Pval;
-	  HMM.loci[i].pState[J]+=Pval;
-	  if(X[seq][i]<0){
-	    HMM.loci[i].E[I]+=Pval*HMM.loci[i].e[I];
-	    HMM.loci[i].E[J]+=Pval*HMM.loci[i].e[J];
+#pragma omp parallel firstprivate(f,b,E,pState,piVec)
+    {
+      #pragma omp for schedule(static)
+      for(int seq=0;seq< X.size();seq++){
+	
+	forwardVec(0,nLoci,HMM,X[seq],HMM.piComb,f);
+	backwardVec(0, nLoci,HMM,X[seq],HMM.piComb,b);
+	
+	vector<double> Pvec(nComb);
+	
+	//Compute Probabilities and estimates
+	
+	for(long i=0;i<nLoci;i++){
+	  double Psum=0;
+	  double Pval;
+	  for(int l=0;l<nComb;l++){
+	    Psum+=f[i][l]*b[i][l];
 	  }
-	  if(X[seq][i]==2){
-	    HMM.loci[i].E[I]+=Pval;
-	    HMM.loci[i].E[J]+=Pval;
-	  }
-	  if(X[seq][i]==1){
-	    double p1,p2,wt1,wt2;
-	    p1=HMM.loci[i].e[I];
-	    p2=HMM.loci[i].e[J];
-	    wt1=p1*(1.-p2);
-	    wt2=p2*(1.-p1);
-	    if((wt1+wt2)>0){
-	      wt1=wt1/(wt1+wt2);
-	      wt2=wt2/(wt1+wt2);
-	      HMM.loci[i].E[I]+=Pval*wt1;
-	      HMM.loci[i].E[J]+=Pval*wt2;
+	  for(int l=0;l<nComb;l++){
+	    int I=HMM.stateI[l];
+	    int J=HMM.stateJ[l];
+	    Pval=f[i][l]*b[i][l]/Psum;
+	    Pvec[l]=Pval;
+	    piVec[i][l]+=Pval;
+	    pState[i][I]+=Pval;
+	    pState[i][J]+=Pval;
+	    if(X[seq][i]<0){
+	      E[i][I]+=Pval*HMM.loci[i].e[I];
+	      E[i][J]+=Pval*HMM.loci[i].e[J];
 	    }
+	    if(X[seq][i]==2){
+	      E[i][I]+=Pval;
+	      E[i][J]+=Pval;
+	    }
+	    if(X[seq][i]==1){
+	      double p1,p2,wt1,wt2;
+	      p1=HMM.loci[i].e[I];
+	      p2=HMM.loci[i].e[J];
+	      wt1=p1*(1.-p2);
+	      wt2=p2*(1.-p1);
+	      if((wt1+wt2)>0){
+		wt1=wt1/(wt1+wt2);
+		wt2=wt2/(wt1+wt2);
+		E[i][I]+=Pval*wt1;
+		E[i][J]+=Pval*wt2;
+	      }
+	    }
+	  }
+	}
+	
+      }//end seq
+      #pragma omp critical(updateHMMdata)
+      {
+	for(long i=0;i<nLoci;i++){
+	  for(int l=0;l<nComb;l++){
+	    HMM.loci[i].piVec[l]+=piVec[i][l];
+	    HMM.loci[i].f[l]+=f[i][l];
+	    HMM.loci[i].b[l]+=b[i][l];
+	  }
+	  for(int I=0;I<nStates;I++){ 
+	    HMM.loci[i].E[I]+=E[i][I];
+	    HMM.loci[i].pState[I]+=pState[i][I];
 	  }
 	}
       }
       
-    }
+    }//end parallel
     
     for(long i=0;i<nLoci;i++){
       for(int l=0;l<nComb;l++) HMM.loci[i].piVec[l]/=(nSeq+priorCount);
@@ -827,6 +854,8 @@ MCMCName=baseName+"_MCMCSamples.txt";
  
   
 
+  f.resize(nLoci,locusf);
+  b.resize(nLoci,locusf);
 
   for(int s=0;s<nSamples;s++){
 
@@ -844,9 +873,8 @@ MCMCName=baseName+"_MCMCSamples.txt";
       cout << endl << "Sampling haplotypes" << endl;
       computeLhsV=1;
       int nFlipped=0;
-      vector<double> locusf(nComb);
+
       vector<int> vecFlipped(nPheno,0);
-      vector< vector<double> > f(nLoci,locusf);
       vector <int>   XHaploNew(nQTLLoci);
 
 #pragma omp parallel for firstprivate(f,XHaploNew)
