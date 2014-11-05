@@ -815,6 +815,8 @@ MCMCName=baseName+"_MCMCSamples.txt";
   lhsV.assign(nComb,0.0);
   lhsVs.assign(nStates,0.0);
   vector<vector<double> > lhsVArray(nQTLLoci,lhsV),lhsVsArray(nQTLLoci,lhsVs);
+  vector<vector<double> > rhsVThread,lhsVThread,lhsVsThread;
+ 
   
 
 
@@ -1019,31 +1021,62 @@ MCMCName=baseName+"_MCMCSamples.txt";
       
       if(!active && uSmp>inactiveProposal) proposeActive=1;
       if(proposeActive || active || computeLhsV){
-	double *rhsVpt=rhsV.data();
-	double *lhsVspt=lhsVs.data();
-	double *lhsVpt=lhsV.data();
+	
 	yDevpt=yDev.data();
+	//#pragma omp parallel
+	{
 
-	//#pragma omp parallel for schedule(static)
-	for(int a=0;a<nPheno;a++){
-	  double ydev=yDev[a];
-	  //int seq=phenSeq[a];
-	  
-	  int seqClass=XHaplo[i][a];
-	  int I=HMM.stateI[seqClass];
-	  int J=HMM.stateJ[seqClass];
-	  if(active){
-	    double xb=(qtlVec[i].delta[I]+qtlVec[i].delta[J])*b;
-	    ydev+=xb;
-	    *(yDevpt+a)=ydev;
+	  double *rhsVpt=rhsV.data();
+	  double *lhsVspt=lhsVs.data();
+	  double *lhsVpt=lhsV.data();
+	  /*#pragma omp master
+	  {
+	    int np=omp_get_num_threads();
+	    rhsVThread.resize(np,rhsV);
+	    lhsVThread.resize(np,lhsV);
+	    lhsVsThread.resize(np,lhsVs);
 	  }
-	  *(rhsVpt+I)+=ydev*rinverse[a];
-	  *(rhsVpt+J)+=ydev*rinverse[a];
-	  if(computeLhsV){
-	    *(lhsVspt+I)+=rinverse[a];
-	    *(lhsVspt+J)+=rinverse[a];
-	    *(lhsVpt+seqClass)+=2.0*rinverse[a];
+#pragma omp barrier
+	  int tid=omp_get_thread_num();
+	  rhsVpt=rhsVThread[tid].data();
+	  lhsVpt=lhsVThread[tid].data();
+	  lhsVspt=lhsVsThread[tid].data();*/
+	  //  #pragma omp for schedule(static)
+	  for(int a=0;a<nPheno;a++){
+	    double ydev=yDev[a];
+	    //int seq=phenSeq[a];
+	    
+	    int seqClass=XHaplo[i][a];
+	    int I=HMM.stateI[seqClass];
+	    int J=HMM.stateJ[seqClass];
+	    if(active){
+	      double xb=(qtlVec[i].delta[I]+qtlVec[i].delta[J])*b;
+	      ydev+=xb;
+	      *(yDevpt+a)=ydev;
+	    }
+	    *(rhsVpt+I)+=ydev*rinverse[a];
+	    *(rhsVpt+J)+=ydev*rinverse[a];
+	    if(computeLhsV){
+	      *(lhsVspt+I)+=rinverse[a];
+	      *(lhsVspt+J)+=rinverse[a];
+	      *(lhsVpt+seqClass)+=2.0*rinverse[a];
+	    }
 	  }
+
+	  //#pragma omp barrier
+	  //#pragma omp master
+	  /*{
+	    int np=omp_get_num_threads();
+	    for(int tid=0;tid<np;tid++){
+	      for(int I=0;I<nStates;I++){
+		rhsV[I]+=rhsVThread[tid][I];
+		lhsVs[I]+=lhsVsThread[tid][I];
+	      }
+	      for(int l=0;l<nComb;l++){
+		lhsV[l]+=lhsVThread[tid][l];
+	      }
+	    }
+	  }*/
 	}
 	  // matches omp parallel
 	  if(computeLhsV){

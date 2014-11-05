@@ -28,6 +28,19 @@ using namespace std;
 
 using namespace Eigen;
 
+class regionAnim{
+ public:
+  vector<double> gHat;
+  vector<vector<double> > stateExp;
+  regionAnim(int nr,int ns){vector <double> sp(ns,0.);gHat.resize(nr,0.),stateExp.resize(nr,sp);};
+};
+
+class regionQTL{
+ public:
+  vector<int> qtlLoci;
+  int midpoint;
+};
+
 class locusMap{
  public:
   string name;
