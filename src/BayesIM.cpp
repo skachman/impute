@@ -3,7 +3,7 @@
 
 int main(int argc,char **argv){
 
-  string genoName,phenoName,mapName;
+  string genoName,phenoName,mapName,SNPName;
   string randomString;
   int nRandom=0;
   vector<double> sig2rPrior,sig2r,nusig2r;
@@ -51,6 +51,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
     MCMCName=baseName+"_MCMCSamples.txt";
     QTLName=baseName+"_QTLResults.txt";
     gHatName=baseName+"_gHatResults.txt";
+    SNPName=baseName+"_SNPResults.txt";
     config.Get("MCMCName",MCMCName);
     config.Get("QTLName",QTLName);
     config.Get("gHatName",gHatName);
@@ -109,6 +110,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
   cout << setw(22) << "MCMCName = " << " " << MCMCName <<endl;
   cout << setw(22) << "QTLName = " << " " << QTLName <<endl;
   cout << setw(22) << "gHatName = " << " " << gHatName <<endl;
+  cout << setw(22) << "SNPName = " << " " << SNPName <<endl;
   cout << setw(22) << "nSamples = " << " " << nSamples << endl;
   cout << setw(22) << "nBurnIn = " << " " << nBurnIn << endl;
   cout << setw(22) << "FreqToSampleHaplo = " << " " << FreqToSampleHaplo << endl;
@@ -149,7 +151,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
   idmap::iterator seqMapIt,phenMapIt;
 
   ifstream Geno,Pheno,MapFile;
-  ofstream MCMCSamples,QTLResults,gHatResults;
+  ofstream MCMCSamples,QTLResults,gHatResults,snpResults;
   string filename;
   string line,id;
   vector<vector<int> > X;
@@ -648,8 +650,19 @@ MCMCName=baseName+"_MCMCSamples.txt";
   if(nIter) HMM.write(hmmFileName);
 
 
+  snpResults.open(SNPName);
+  snpResults << "Loci\tName\tChrom\tPos";
+  if(nIter) for(int l=0;l<nStates;l++) snpResults << "\tframeTemplate" << l ;
+  for(int l=0;l<nStates;l++) snpResults<< "\tframeFreq" << l ;
+  snpResults << endl;
 
-  // Add QTL loci;
+  for(long i=0;i<nLoci;i++){
+    snpResults << i << "\t" << lociMap[i].name << "\t" << lociMap[i].chrom << "\t"<< lociMap[i].pos;
+    for(int l=0;l<nStates;l++) snpResults << "\t" <<HMM.loci[i].e[l];
+    if(nIter) for(int l=0;l<nStates;l++) snpResults << "\t" <<HMM.loci[i].pState[l]/(2.*(nSeq+priorCount));
+    snpResults << endl;
+  }
+    // Add QTL loci;
   int q=0;
   int nQTLLoci;
   int nSNPLoci=nLoci;
@@ -784,11 +797,6 @@ MCMCName=baseName+"_MCMCSamples.txt";
   }
   for(int iCv=0;iCv<nCovariate;iCv++) MCMCSamples << "\t" << covName[iCv];
   MCMCSamples << endl;
-  QTLResults << "Loci\tName\tChrom\tPos\tmodelFreq\tb\twindowFreq";
-  for(int l=0;l<nStates;l++) QTLResults << "\tDelta" << l ;
-  //for(int l=0;l<nStates;l++) QTLResults << "\thaploFreq" << l ;
-  //for(int l=0;l<nStates;l++) QTLResults << "\thaploTemplate" << l ;
-  QTLResults << endl;
   gHatResults << "ID\tgHat\tPEV"<< endl;
   vector<double> logPHaplo(nPheno);
 
