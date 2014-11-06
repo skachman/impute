@@ -1519,6 +1519,14 @@ MCMCName=baseName+"_MCMCSamples.txt";
       }
     }
   }
+
+  QTLResults << "Loci\tName\tChrom\tPos\tmodelFreq\tb\twindowFreq";
+  for(int l=0;l<nStates;l++) QTLResults << "\tDelta" << l ;
+  //for(int l=0;l<nStates;l++) QTLResults << "\thaploFreq" << l ;
+  //for(int l=0;l<nStates;l++) QTLResults << "\thaploTemplate" << l ;
+
+  QTLResults << endl;
+
   double numSampled;
   numSampled=(double)(nSamples-nBurnIn);
   for(long i=0;i<nLoci;i++){
