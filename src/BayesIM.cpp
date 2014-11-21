@@ -248,6 +248,12 @@ MCMCName=baseName+"_MCMCSamples.txt";
   }
   int nPos=posVector.size();
   int seq=0;
+  string binaryGenoFileName;
+    binaryGenoFileName= genoName + ".bin";
+  if(0){
+    
+    if((failCode=readX(binaryGenoFileName))!=0);
+  }
   while(getline(Geno,line)){
     stringstream linestr(line);
     linestr >> id;
@@ -677,20 +683,22 @@ MCMCName=baseName+"_MCMCSamples.txt";
   if(nIter) HMM.write(hmmFileName);
 
 
-  snpResults.open(SNPName);
-  snpResults << "Loci\tName\tChrom\tPos";
-  if(nIter) for(int l=0;l<nStates;l++) snpResults << "\tframeTemplate" << l ;
-  for(int l=0;l<nStates;l++) snpResults<< "\tframeFreq" << l ;
-  snpResults << endl;
-
-  for(long i=0;i<nLoci;i++){
-    snpResults << i << "\t" << lociMap[i].name << "\t" << lociMap[i].chrom << "\t"<< lociMap[i].pos;
-    for(int l=0;l<nStates;l++) snpResults << "\t" <<HMM.loci[i].e[l];
-    if(nIter) for(int l=0;l<nStates;l++) snpResults << "\t" <<HMM.loci[i].pState[l]/(2.*(nSeq+priorCount));
+  if(nIter) {
+    snpResults.open(SNPName);
+    snpResults << "Loci\tName\tChrom\tPos";
+    if(nIter) for(int l=0;l<nStates;l++) snpResults << "\tframeTemplate" << l ;
+    for(int l=0;l<nStates;l++) snpResults<< "\tframeFreq" << l ;
     snpResults << endl;
+    
+    for(long i=0;i<nLoci;i++){
+      snpResults << i << "\t" << lociMap[i].name << "\t" << lociMap[i].chrom << "\t"<< lociMap[i].pos;
+      for(int l=0;l<nStates;l++) snpResults << "\t" <<HMM.loci[i].e[l];
+      if(nIter) for(int l=0;l<nStates;l++) snpResults << "\t" <<HMM.loci[i].pState[l]/(2.*(nSeq+priorCount));
+      snpResults << endl;
+    }
   }
     // Add QTL loci;
-  int q=0;
+    int q=0;
   int nQTLLoci;
   int nSNPLoci=nLoci;
 
@@ -827,7 +835,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
   gHatResults << "ID\tgHat\tPEV"<< endl;
   vector<double> logPHaplo(nPheno);
 
-  vector<int> dVec(nStates,0),deltaZero(nStates,0);
+  vector<int> dVec(nStates,0),deltaZero(nStates,0),dsum(nStates,0),dsum2(nStates,0),deltaBase;
   vector<vector<int> > deltaStates;
   int s;
   do{
@@ -845,13 +853,15 @@ MCMCName=baseName+"_MCMCSamples.txt";
   }while(s<nStates);
   deltaStates.pop_back(); // Drop all out and all in
   int computeLhsV=1;
+
   vector<double> rhsV,lhsV,lhsVs;
   rhsV.assign(nStates,0.0);
   lhsV.assign(nComb,0.0);
   lhsVs.assign(nStates,0.0);
+  vector<double> rhsVtmp=rhsV,lhsVtmp=lhsV,lhsVstmp=lhsVs,yDevtmp=y;
   vector<vector<double> > lhsVArray(nQTLLoci,lhsV),lhsVsArray(nQTLLoci,lhsVs);
   vector<vector<double> > rhsVThread,lhsVThread,lhsVsThread;
- 
+  double *rhsVpt,*lhsVpt,*lhsVspt;
   
 
   f.resize(nLoci,locusf);
@@ -1056,40 +1066,35 @@ MCMCName=baseName+"_MCMCSamples.txt";
       uSmp=u(gen);
       
       if(!active && uSmp>inactiveProposal) proposeActive=1;
+      
       if(proposeActive || active || computeLhsV){
+	dVec=qtlVec[i].delta;
 	
-	yDevpt=yDev.data();
-	//#pragma omp parallel
-	{
-
-	  double *rhsVpt=rhsV.data();
-	  double *lhsVspt=lhsVs.data();
-	  double *lhsVpt=lhsV.data();
-	  /*#pragma omp master
-	  {
-	    int np=omp_get_num_threads();
-	    rhsVThread.resize(np,rhsV);
-	    lhsVThread.resize(np,lhsV);
-	    lhsVsThread.resize(np,lhsVs);
+	rhsVtmp.assign(nStates,0.0);
+	lhsVtmp.assign(nComb,0.0);
+	lhsVstmp.assign(nStates,0.0);
+	//yDevtmp.assign(nPheno,0.0);
+	
+	for(int a=0;a<nPheno;a++){
+	  int seqClass=XHaplo[i][a];
+	  int I=HMM.stateI[seqClass];
+	  int J=HMM.stateJ[seqClass];
+	  if(active){
+	    yDev[a]+=(dVec[I]+dVec[J])*b;
 	  }
-#pragma omp barrier
-	  int tid=omp_get_thread_num();
-	  rhsVpt=rhsVThread[tid].data();
-	  lhsVpt=lhsVThread[tid].data();
-	  lhsVspt=lhsVsThread[tid].data();*/
-	  //  #pragma omp for schedule(static)
+	}
+
+	//#pragma omp parallel firstprivate(rhsVtmp,lhsVtmp,lhsVstmp)
+	{
+	  rhsVpt=rhsVtmp.data();
+	  lhsVpt=lhsVtmp.data();
+	  lhsVspt=lhsVstmp.data();
+	  //#pragma omp for schedule(static)
 	  for(int a=0;a<nPheno;a++){
 	    double ydev=yDev[a];
-	    //int seq=phenSeq[a];
-	    
 	    int seqClass=XHaplo[i][a];
 	    int I=HMM.stateI[seqClass];
 	    int J=HMM.stateJ[seqClass];
-	    if(active){
-	      double xb=(qtlVec[i].delta[I]+qtlVec[i].delta[J])*b;
-	      ydev+=xb;
-	      *(yDevpt+a)=ydev;
-	    }
 	    *(rhsVpt+I)+=ydev*rinverse[a];
 	    *(rhsVpt+J)+=ydev*rinverse[a];
 	    if(computeLhsV){
@@ -1099,20 +1104,20 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	    }
 	  }
 
-	  //#pragma omp barrier
-	  //#pragma omp master
-	  /*{
-	    int np=omp_get_num_threads();
-	    for(int tid=0;tid<np;tid++){
+	  //#pragma omp critical(updateRhsLhs)
+	  {
+	    for(int I=0;I<nStates;I++){
+	      rhsV[I]+=rhsVtmp[I];
+	    } 
+	    if(computeLhsV){
 	      for(int I=0;I<nStates;I++){
-		rhsV[I]+=rhsVThread[tid][I];
-		lhsVs[I]+=lhsVsThread[tid][I];
+		lhsVs[I]+=lhsVstmp[I];
 	      }
 	      for(int l=0;l<nComb;l++){
-		lhsV[l]+=lhsVThread[tid][l];
+		lhsV[l]+=lhsVtmp[l];
 	      }
 	    }
-	  }*/
+	  }
 	}
 	  // matches omp parallel
 	  if(computeLhsV){
@@ -1120,98 +1125,88 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	    lhsVsArray[i]=lhsVs;
 	  }
 	}
+
+
+
       if(active || proposeActive){
 	int nDeltaStates=deltaStates.size();
-	double psum=0;
+	
+	//uniform_int_distribution<int> uDelta(0,nDeltaStates-1);
+	double psum=0,pInactive=1,ptot=0;
 	double maxAoverI=0.;
-	vector<double> AoverIVec(nDeltaStates,log((1.-pi)/pi)-.5*log(sig2b)-log((double) nDeltaStates));
-	//#pragma omp parallel for firstprivate(dVec)
-	for(int sd=0;sd<nDeltaStates;sd++){
-	  double lhs=sig2e/sig2b;
-	  double rhs=0;
-	  dVec=deltaStates[sd];
-	  int IJ=0;
-	  for(int I=0;I<nStates;I++){
-	    if(dVec[I]){
-	      rhs+=rhsV[I];
-	      lhs+=lhsVs[I];
-	    }
-	    for(int J=0;J<=I;J++,IJ++){
-	      if(dVec[I] && dVec[J]) lhs+=lhsV[IJ];      
-	    }
+	vector<double> AoverIVec(nStates+1);
+	
+	if(!active) qtlVec[i].delta=deltaZero;
+
+	
+	calcDeltaProposal(sig2e,sig2b,qtlVec[i].delta,
+			 dVec,rhsV,lhsV,lhsVs,pi,nDeltaStates,nStates,
+			 pInactive,maxAoverI,AoverIVec,psum);
+	
+	ptot=psum+pInactive;
+	
+	
+	int SD;
+	if(u(gen) < psum/ptot) proposeActive=1;
+	double psumP=0,pInactiveP=1,ptotP=0;
+	double maxAoverIP=0.;
+	vector<double> AoverIVecP(nStates+1);
+	deltaBase=deltaZero;
+	if(proposeActive){
+	  //Propose Delta
+	  uSmp=u(gen);
+	  uSmp*=psum;
+	  int sd;
+	  for(sd=0; uSmp>AoverIVec[sd]   && sd<nStates ;sd++){
+	    uSmp-=AoverIVec[sd];
 	  }
-	  rhs/=sig2e;
-	  lhs/=sig2e;
-	  AoverIVec[sd]+=0.5*(rhs*rhs/lhs-log(lhs));
-	  if(AoverIVec[sd]> maxAoverI) {
-	    // #pragma atomic
-	    maxAoverI=AoverIVec[sd];
+	  deltaBase=qtlVec[i].delta;
+	  if(sd != nStates){
+	    deltaBase[sd]=1-qtlVec[i].delta[sd];
 	  }
-	  //AoverIVec[sd]=exp(AoverIVec[sd]);
-	  //psum+=AoverIVec[sd];
+	  SD=sd;
 	}
 
-	//#pragma omp parallel for reduction (+:psum)
-	for(int sd=0;sd<nDeltaStates;sd++){
-	  AoverIVec[sd]=exp(AoverIVec[sd]-maxAoverI);
-	  psum+=AoverIVec[sd];
+
+	calcDeltaProposal(sig2e,sig2b,deltaBase,
+			  dVec,rhsV,lhsV,lhsVs,pi,nDeltaStates,nStates,
+			  pInactiveP,maxAoverIP,AoverIVecP,psumP);
+	ptotP=psumP+pInactiveP;
+	if(0) {
+	  cout << i << " PA "<< proposeActive << " " << psum << " "<< ptot << " " << psumP << " " << ptotP << endl;
+	  for(int I=0;I<nStates;I++) cout << qtlVec[i].delta[I] << " " ;
+	  cout << "    "  << SD << " " <<log(AoverIVec[SD])+maxAoverI << " " << log(pInactive)+maxAoverI;
+	  cout << " " <<log(AoverIVec[nStates])+maxAoverI  << " ";
+	  for(int I=0;I<nStates;I++) cout << deltaBase[I] << " " ;
+	  cout << " " <<log(AoverIVecP[nStates])+maxAoverIP << " " << log(pInactiveP)+maxAoverIP ;
+	  cout << " " <<log(AoverIVecP[SD])+maxAoverIP << endl ;
 	}
-	//double pSumScaled=psum;
-	//psum*=exp(maxAoverI);
-	//psum+=1.;
-     
-	if(active && u(gen) < psum/(psum+exp(-maxAoverI))) proposeActive=1;
-	//else proposeActive=0;
+	
 
 	int accept=0;
-	if(proposeActive && active) {
-	  accept=1;
-	} 
-	else{//
-	  if(proposeActive && u(gen)*(1.-inactiveProposal) < (psum/(psum+exp(-maxAoverI)))){
-	    accept=1;
-	  }
-	  if(active && u(gen) < (1.-inactiveProposal)/(psum/(psum+exp(-maxAoverI)))){
-	    accept=1;
-	  }
-	}
+	double inactiveMult=1.,inactiveMultP=1.;
+	if(!active ) inactiveMult=1.-inactiveProposal;
+	if(!proposeActive) inactiveMultP=1.-inactiveProposal;
+	if(u(gen)*ptotP*inactiveMult < inactiveMultP*ptot*exp(maxAoverI-maxAoverIP)) accept=1;
+	
+	
+
 	if(!accept) {
 	  if(active) nRejectA2I++;
 	  else nRejectI2A++;
 	}
 	if(accept || active){	
-	  
-	  
 	  if(accept && !proposeActive){
 	    qtlVec[i].active=0;
 	    qtlVec[i].b=0;
 	    qtlVec[i].delta=deltaZero;
 	  }
 	  else{
-	    
-	    uSmp=u(gen);
-	    uSmp*=psum;
 	    qtlVec[i].active=1;
 	    activeLoci.push_back(i);
-	    //uSmp-=1.;
-	    
 	    nowActive=1;
-	    
-	    
-	    
-	    //
-	    // Sample Delta
-	    //
-	    int sd;
-	    for(sd=0; uSmp>AoverIVec[sd]   && sd<nDeltaStates ;sd++){
-		uSmp-=AoverIVec[sd];
-	      }
-	    if(sd==nDeltaStates) {
-	      cout <<"Delta Sampler Failed!!!"<< uSmp <<   " " << AoverIVec[sd-1] << endl;
-	      exit(1);
-	    }
-	    dVec=deltaStates[sd];
-	    qtlVec[i].delta=dVec;
+	    if(accept) qtlVec[i].delta=deltaBase;
+	    dVec=qtlVec[i].delta;
 	    double sumXY,sumXX;
 	    sumXY=0;
 	    sumXX=sig2e/sig2b;
@@ -1243,15 +1238,13 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	      *(gHatpt+a)+=(dVec[I]+dVec[J])*b;
 	    }
 	    
-	  }
+	}
 	}
       }
       
       //if(qtlVec[i].active && !nowActive) cout << "Switch locus "<< i << " " << qtlVec[i].active << "=>" << nowActive << endl;
       
-      if(qtlVec[i].active){
-	
-      }
+      
       
       if(s>=nBurnIn)qtlSumVec[i].updateSum(qtlVec[i]);
       
