@@ -82,7 +82,8 @@ void calcDeltaProposal(const double sig2e,const double sig2b,const vector<int> &
   }
   
   pInactive=0.;
-  if(dsum[nStates]==1) pInactive=exp(-maxAoverI);
+  //if(dsum[nStates]==1) pInactive=exp(-maxAoverI);
+  pInactive=exp(-maxAoverI)*((double) (nStates+1))/((double) nDeltaStates+2);
 }
 
 

@@ -9,7 +9,10 @@ int main(int argc,char **argv){
   string id;
   int failCode;
   vector<string> ID;
-  map<string,int> regions,seqMap;
+  idmap regions,seqMap;
+  
+  idmap::iterator seqMapIt,phenMapIt;
+  
   vector<long> regionStart,regionEnd;
   vector<double> regionStartMb,regionEndMb;
   vector<int> regionChrom;
@@ -89,11 +92,11 @@ int main(int argc,char **argv){
  cout << setw(22) << "QTLName = " << " " << QTLName <<endl;
  cout << setw(22) << "regionName = " << " " << regionName <<endl;
  cout << setw(22) << "regions = " ;
- for (std::map<string,int>::iterator it=regions.begin(); it!=regions.end(); ++it){ 
+ for (auto it=regions.begin(); it!=regions.end(); ++it){ 
    cout <<" " << it->first; 
  }
  cout << endl;
- for (std::map<string,int>::iterator it=regions.begin(); it!=regions.end(); ++it){
+ for (auto it=regions.begin(); it!=regions.end(); ++it){
    string label=it->first;
    int rEffect=it->second;
    cout << setw(22) << "chrom_"+label+" = "  << " " << regionChrom[rEffect] << endl; 
@@ -175,32 +178,38 @@ int main(int argc,char **argv){
   }
   int nPos=posVector.size();
   int seq=0;
-  while(getline(Geno,line)){
-    stringstream linestr(line);
-    linestr >> id;
-    ID.push_back(id);
-    seqMap[id]=seq++;
-    vector<int> row(mapOrder.size(),-2);
-    //    X.push_back(row);
-    long i=0;
-    if((seq%200)==0) cout << seq << endl;
-    while(linestr >> val){
-      if(i >=nPos) {
-	cout <<"Genotype record is longer than expected, check record with ID: " << id << " " << i << endl;
-	exit(101);
+  
+  string binaryGenoFileName;
+  binaryGenoFileName= genoName + ".bin";
+  if(readX(binaryGenoFileName, X,ID,seqMap)!=0){
+    while(getline(Geno,line)){
+      stringstream linestr(line);
+      linestr >> id;
+      ID.push_back(id);
+      seqMap[id]=seq++;
+      vector<int> row(mapOrder.size(),-2);
+      //    X.push_back(row);
+      long i=0;
+      if((seq%200)==0) cout << seq << endl;
+      while(linestr >> val){
+	if(i >=nPos) {
+	  cout <<"Genotype record is longer than expected, check record with ID: " << id << " " << i << endl;
+	  exit(101);
+	}
+	iVal=-1;
+	if(val==10 || val==0 || val==-10){
+	  iVal=val+10;
+	  iVal/=10;
+	}
+	
+	if(posVector[i]>-1) row[posVector[i]]=iVal;
+	
+	i++;
       }
-      iVal=-1;
-      if(val==10 || val==0 || val==-10){
-	iVal=val+10;
-	iVal/=10;
-      }
-
-      if(posVector[i]>-1) row[posVector[i]]=iVal;
-
-      i++;
+      X.push_back(row);
+      
     }
-    X.push_back(row);
-    
+    writeX(binaryGenoFileName,X,ID);
   }
 
   cout << endl;
@@ -410,7 +419,7 @@ int main(int argc,char **argv){
   for(int I=0;I<nStates;I++) regionFile << "\texpState" << I;
   regionFile << endl;
   for(int seq=0;seq<nGeno;seq++){
-    for (std::map<string,int>::iterator it=regions.begin(); it!=regions.end(); ++it){
+    for (auto it=regions.begin(); it!=regions.end(); ++it){
       string label=it->first;
       int rEffect=it->second;
       regionFile  << ID[seq] << "\t" << label << "\t"

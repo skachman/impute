@@ -11,7 +11,6 @@ int main(int argc,char **argv){
   int failCode;
   mapName="Map.txt";
   genoName="geno.dat";
-  phenoName="BWT.dat";
   int freqQTLKb=25; 
   int nStates=4;
   double lambdaKb=500.;
@@ -837,7 +836,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
   gHatResults << "ID\tgHat\tPEV"<< endl;
   vector<double> logPHaplo(nPheno);
 
-  vector<int> dVec(nStates,0),deltaZero(nStates,0),dsum(nStates,0),dsum2(nStates,0),deltaBase;
+  vector<int> dVec(nStates,0),deltaZero(nStates,0),deltaOne(nStates,1),dsum(nStates,0),dsum2(nStates,0),deltaBase;
   vector<vector<int> > deltaStates;
   int s;
   do{
@@ -854,6 +853,13 @@ MCMCName=baseName+"_MCMCSamples.txt";
     }
   }while(s<nStates);
   deltaStates.pop_back(); // Drop all out and all in
+
+  
+  int nDeltaStates=deltaStates.size();
+  uniform_int_distribution<int> uDelta(0,nDeltaStates+1);
+
+  deltaStates.push_back(deltaOne);
+  deltaStates.push_back(deltaZero);
   int computeLhsV=1;
 
   vector<double> rhsV,lhsV,lhsVs;
@@ -1131,9 +1137,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
 
 
       if(active || proposeActive){
-	int nDeltaStates=deltaStates.size();
 	
-	//uniform_int_distribution<int> uDelta(0,nDeltaStates-1);
 	double psum=0,pInactive=1,ptot=0;
 	double maxAoverI=0.;
 	double psumP=0,pInactiveP=1,ptotP=0;
@@ -1171,17 +1175,23 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	  }
 	  psumP=psum;
 	  pInactiveP=pInactive;
-	  ptotP=psumP;
 	  maxAoverIP=maxAoverI;
+	  ptotP=psumP;
 	  if(proposeActive)ptotP+=pInactiveP;
 	  break;
 	case 2:
+	  
+	  
+	  if(!active) {
+	    qtlVec[i].delta=deltaStates[uDelta(gen)];
+	  }
 	  calcDeltaProposal(sig2e,sig2b,qtlVec[i].delta,
 			    dVec,rhsV,lhsV,lhsVs,pi,nDeltaStates,nStates,
 			    pInactive,maxAoverI,AoverIVec,psum);
 	  
-	  ptot=psum+pInactive;
-	  
+	 
+	  ptot=psum;
+	  if(active)ptot+=pInactive;
 	  
 	  
 	  if(u(gen) < psum/ptot) proposeActive=1;
@@ -1206,7 +1216,8 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	  calcDeltaProposal(sig2e,sig2b,deltaBase,
 			    dVec,rhsV,lhsV,lhsVs,pi,nDeltaStates,nStates,
 			    pInactiveP,maxAoverIP,AoverIVecP,psumP);
-	  ptotP=psumP+pInactiveP;
+	  ptotP=psumP;
+	  if(proposeActive)ptotP+=pInactiveP;
 	  break;
 	default:
 	  cout << endl << "Invalid deltaSampler=" << deltaSampler << "specified." <<endl;
@@ -1235,7 +1246,10 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	
 	if(!accept) {
 	  if(active) nRejectA2I++;
-	  else nRejectI2A++;
+	  else {
+	    nRejectI2A++;
+	    qtlVec[i].delta=deltaZero;
+	  }
 	}
 	if(accept || active){	
 	  if(accept && !proposeActive){
