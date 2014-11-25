@@ -1,5 +1,47 @@
 #include "impute.h"
 
+void calcDeltaProposalFull(const double sig2e,const double sig2b,const vector<int> &delta,vector<vector<int> > &deltaStates,
+			 vector<int> &dVec,vector<double> &rhsV,vector<double> &lhsV,vector<double> &lhsVs,const double pi,const int nDeltaStates,const int nStates,
+			  double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum){
+  
+  //vector<int> dsum(nDeltaStates,0);
+  AoverIVec.assign(nDeltaStates,log((1.-pi)/pi)-.5*log(sig2b)-log((double) nDeltaStates));
+  maxAoverI=0.;
+  //dsum.assign(nDeltaStates,0);
+  for(int sd=0;sd<nDeltaStates;sd++){
+    double lhs=sig2e/sig2b;
+    double rhs=0;
+    dVec=deltaStates[sd];
+    //if(sd != nStates) dVec[sd]=1-dVec[sd];
+    int IJ=0;
+    for(int I=0;I<nStates;I++){
+      //dsum[sd]+=dVec[I];
+      if(dVec[I]){
+	rhs+=rhsV[I];
+	lhs+=lhsVs[I];
+      }
+      for(int J=0;J<=I;J++,IJ++){
+	if(dVec[I] && dVec[J]) lhs+=lhsV[IJ];      
+      }
+    }
+    rhs/=sig2e;
+    lhs/=sig2e;
+    AoverIVec[sd]+=0.5*(rhs*rhs/lhs-log(lhs));
+    if(AoverIVec[sd]> maxAoverI) {
+       maxAoverI=AoverIVec[sd];
+    }
+  }
+  
+  psum=0;
+  for(int sd=0;sd<nDeltaStates;sd++){
+    AoverIVec[sd]=exp(AoverIVec[sd]-maxAoverI);
+    //if(dsum[sd]==0 || dsum[sd]==nStates) AoverIVec[sd]=0;
+    psum+=AoverIVec[sd];
+  }
+  
+  pInactive=exp(-maxAoverI);
+}
+
 void calcDeltaProposal(const double sig2e,const double sig2b,const vector<int> &delta,
 			 vector<int> &dVec,vector<double> &rhsV,vector<double> &lhsV,vector<double> &lhsVs,const double pi,const int nDeltaStates,const int nStates,
 			 double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum){
@@ -210,10 +252,52 @@ bool locusMapCompare(locusMap &A,locusMap &B){
   return((A.chrom < B.chrom) || ((A.chrom == B.chrom) && (A.pos < B.pos)));
 };
 
-int writeX(const string &filename){
+int writeX(const string &filename,vector<vector<int> > &X,vector<string > &ID){
   ofstream XStream;
+  long nLoci,nSeq;
+  
+  vector<int> row;
+  nSeq=X.size();
+  nLoci=X[0].size();
   XStream.open(filename,ofstream::binary);
   if(XStream.fail()) return(1);
+  XStream.write(reinterpret_cast<char*>(&nSeq),sizeof(nSeq));
+  XStream.write(reinterpret_cast<char*>(&nLoci),sizeof(nLoci));
+  for(long i=0;i<nSeq;i++) {
+    int sl=ID[i].length();
+      XStream.write(reinterpret_cast<char*>(&sl),sizeof(sl));
+      XStream.write(reinterpret_cast<const char*>(ID[i].c_str()),sl*sizeof(char));
+      XStream.write(reinterpret_cast<char*>(X[i].data()),nLoci*sizeof(int));
+  }
+  
+  return(0);
+}
+
+
+int readX(const string &filename,vector<vector<int> > &X,vector<string > &ID,idmap &seqmap){
+  ifstream XStream;
+  long nLoci,nSeq;
+  vector<int> row;
+  
+  XStream.open(filename,ifstream::binary);
+  if(XStream.fail()) return(1);
+  XStream.read(reinterpret_cast<char*>(&nSeq),sizeof(nSeq));
+  XStream.read(reinterpret_cast<char*>(&nLoci),sizeof(nLoci));
+  row.resize(nLoci);
+  X.resize(nSeq,row);
+  ID.resize(nSeq);
+  for(long i=0;i<nSeq;i++) {
+    int sl;
+      XStream.read(reinterpret_cast<char*>(&sl),sizeof(sl));
+      char* buffer = new char[sl];
+      XStream.read(reinterpret_cast<char*>(buffer),sl*sizeof(char));
+      ID[i].assign(buffer,sl);
+      delete[] buffer;
+      seqmap[ID[i]]=i;
+      XStream.read(reinterpret_cast<char*>(X[i].data()),nLoci*sizeof(int));
+  }
+  
+  return(0);
 }
 
 int hmm::write(const string &filename){

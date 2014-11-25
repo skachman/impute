@@ -29,7 +29,7 @@ int main(int argc,char **argv){
   double sig2bPrior=.05,sig2ePrior=5;
   double pi=.99,mu=0,inactiveProposal=0.9;
   double nusig2e=10,nusig2b=4;
-
+  int deltaSampler=1;
   
 MCMCName=baseName+"_MCMCSamples.txt";
   QTLName=baseName+"_QTLResults.txt";
@@ -57,6 +57,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
     config.Get("gHatName",gHatName);
     config.Get("nSamples",nSamples);
     config.Get("nBurnIn",nBurnIn);
+    config.Get("deltaSampler",deltaSampler);
     config.Get("FreqToSampleHaplo",FreqToSampleHaplo);
     config.Get("printFreq",printFreq);
     config.Get("outputFreq",outputFreq);
@@ -113,6 +114,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
   cout << setw(22) << "SNPName = " << " " << SNPName <<endl;
   cout << setw(22) << "nSamples = " << " " << nSamples << endl;
   cout << setw(22) << "nBurnIn = " << " " << nBurnIn << endl;
+  cout << setw(22) << "deltaSampler = " << " " << deltaSampler << " # 1=Use full sampler, 2=use nState sampler"<<endl;
   cout << setw(22) << "FreqToSampleHaplo = " << " " << FreqToSampleHaplo << endl;
   cout << setw(22) << "printFreq = " << " " << printFreq << endl;
   cout << setw(22) << "outputFreq = " << " " << outputFreq << endl;
@@ -249,42 +251,41 @@ MCMCName=baseName+"_MCMCSamples.txt";
   int nPos=posVector.size();
   int seq=0;
   string binaryGenoFileName;
-    binaryGenoFileName= genoName + ".bin";
-  if(0){
-    
-    if((failCode=readX(binaryGenoFileName))!=0);
-  }
-  while(getline(Geno,line)){
-    stringstream linestr(line);
-    linestr >> id;
-    ID.push_back(id);
-    seqMap[id]=seq++;
-    vector<int> row(mapOrder.size(),-2);
-    //    X.push_back(row);
-    long i=0;
-    if((seq%200)==0) cout << seq << endl;
-    while(linestr >> val){
-      if(i >=nPos) {
-	cout <<"Genotype record is longer than expected, check record with ID: " << id << " " << i << endl;
-	exit(101);
+  binaryGenoFileName= genoName + ".bin";
+  if(readX(binaryGenoFileName, X,ID,seqMap)!=0){
+    while(getline(Geno,line)){
+      stringstream linestr(line);
+      linestr >> id;
+      ID.push_back(id);
+      seqMap[id]=seq++;
+      vector<int> row(mapOrder.size(),-2);
+      //    X.push_back(row);
+      long i=0;
+      if((seq%200)==0) cout << seq << endl;
+      while(linestr >> val){
+	if(i >=nPos) {
+	  cout <<"Genotype record is longer than expected, check record with ID: " << id << " " << i << endl;
+	  exit(101);
+	}
+	iVal=-1;
+	if(val==10 || val==0 || val==-10){
+	  iVal=val+10;
+	  iVal/=10;
+	}
+	
+	//  if(seq < 1 && i<5) cout << i << " " << val << " " << iVal << " " <<posVector[i] << endl;
+	//if(seq < 5 && posVector[i]<5 && posVector[i]> -1) cout << i << " " << val << " " << iVal << " " <<posVector[i] <<"*"<< endl;
+	
+	if(posVector[i]>-1) row[posVector[i]]=iVal;
+	//X.back()[posVector[i]]=iVal;
+	i++;
       }
-      iVal=-1;
-      if(val==10 || val==0 || val==-10){
-	iVal=val+10;
-	iVal/=10;
-      }
-
-      //  if(seq < 1 && i<5) cout << i << " " << val << " " << iVal << " " <<posVector[i] << endl;
-      //if(seq < 5 && posVector[i]<5 && posVector[i]> -1) cout << i << " " << val << " " << iVal << " " <<posVector[i] <<"*"<< endl;
+      X.push_back(row);
       
-      if(posVector[i]>-1) row[posVector[i]]=iVal;
-      //X.back()[posVector[i]]=iVal;
-      i++;
     }
-    X.push_back(row);
-    
+    writeX(binaryGenoFileName,X,ID);
   }
-
+  
   cout << endl;
   for(int i=0;i<10;i++){
     cout << setw(10) << ID[i];
@@ -793,6 +794,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
   //int nSamples=40;
   //int nBurnIn=2;
   
+  vector<double> AoverIVecP,AoverIVec;
   double sig2e=sig2ePrior,sig2b=sig2bPrior,sig2g;
   double scaleRes=sig2ePrior*(nusig2e-2.);
   double scaleB=sig2bPrior*(nusig2b-2.);
@@ -1134,45 +1136,85 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	//uniform_int_distribution<int> uDelta(0,nDeltaStates-1);
 	double psum=0,pInactive=1,ptot=0;
 	double maxAoverI=0.;
-	vector<double> AoverIVec(nStates+1);
-	
-	if(!active) qtlVec[i].delta=deltaZero;
-
-	
-	calcDeltaProposal(sig2e,sig2b,qtlVec[i].delta,
-			 dVec,rhsV,lhsV,lhsVs,pi,nDeltaStates,nStates,
-			 pInactive,maxAoverI,AoverIVec,psum);
-	
-	ptot=psum+pInactive;
-	
-	
-	int SD;
-	if(u(gen) < psum/ptot) proposeActive=1;
 	double psumP=0,pInactiveP=1,ptotP=0;
 	double maxAoverIP=0.;
-	vector<double> AoverIVecP(nStates+1);
-	deltaBase=deltaZero;
-	if(proposeActive){
-	  //Propose Delta
-	  uSmp=u(gen);
-	  uSmp*=psum;
-	  int sd;
-	  for(sd=0; uSmp>AoverIVec[sd]   && sd<nStates ;sd++){
-	    uSmp-=AoverIVec[sd];
+	int SD=0;
+	if(!active) qtlVec[i].delta=deltaZero;
+	
+	switch(deltaSampler){
+	case 1:
+	  
+	  calcDeltaProposalFull(sig2e,sig2b,qtlVec[i].delta,deltaStates,
+				dVec,rhsV,lhsV,lhsVs,pi,nDeltaStates,nStates,
+				pInactive,maxAoverI,AoverIVec,psum);
+	  
+	  ptot=psum;
+	  if(active)ptot+=pInactive;
+	  if(u(gen) < psum/ptot) proposeActive=1;
+	  deltaBase=deltaZero;
+	  if(proposeActive){
+	    //Propose Delta
+	    uSmp=u(gen);
+	    uSmp*=psum;
+	    int sd;
+	    for(sd=0; uSmp>AoverIVec[sd]   && sd<nDeltaStates ;sd++){
+	      uSmp-=AoverIVec[sd];
+	    }
+	    if(sd< nDeltaStates){
+	      deltaBase=deltaStates[sd];
+	    }
+	    else{
+	      cout << endl << "Full Delta Sampler Failed." << endl;
+	      exit(314);
+	    }
+	    SD=sd;
 	  }
-	  deltaBase=qtlVec[i].delta;
-	  if(sd != nStates){
-	    deltaBase[sd]=1-qtlVec[i].delta[sd];
+	  psumP=psum;
+	  pInactiveP=pInactive;
+	  ptotP=psumP;
+	  maxAoverIP=maxAoverI;
+	  if(proposeActive)ptotP+=pInactiveP;
+	  break;
+	case 2:
+	  calcDeltaProposal(sig2e,sig2b,qtlVec[i].delta,
+			    dVec,rhsV,lhsV,lhsVs,pi,nDeltaStates,nStates,
+			    pInactive,maxAoverI,AoverIVec,psum);
+	  
+	  ptot=psum+pInactive;
+	  
+	  
+	  
+	  if(u(gen) < psum/ptot) proposeActive=1;
+	  
+	  deltaBase=deltaZero;
+	  if(proposeActive){
+	    //Propose Delta
+	    uSmp=u(gen);
+	    uSmp*=psum;
+	    int sd;
+	    for(sd=0; uSmp>AoverIVec[sd]   && sd<nStates ;sd++){
+	      uSmp-=AoverIVec[sd];
+	    }
+	    deltaBase=qtlVec[i].delta;
+	    if(sd != nStates){
+	      deltaBase[sd]=1-qtlVec[i].delta[sd];
+	    }
+	    SD=sd;
 	  }
-	  SD=sd;
+	  
+	  
+	  calcDeltaProposal(sig2e,sig2b,deltaBase,
+			    dVec,rhsV,lhsV,lhsVs,pi,nDeltaStates,nStates,
+			    pInactiveP,maxAoverIP,AoverIVecP,psumP);
+	  ptotP=psumP+pInactiveP;
+	  break;
+	default:
+	  cout << endl << "Invalid deltaSampler=" << deltaSampler << "specified." <<endl;
+	  exit(313);
 	}
-
-
-	calcDeltaProposal(sig2e,sig2b,deltaBase,
-			  dVec,rhsV,lhsV,lhsVs,pi,nDeltaStates,nStates,
-			  pInactiveP,maxAoverIP,AoverIVecP,psumP);
-	ptotP=psumP+pInactiveP;
+	
 	if(0) {
+	  if(deltaSampler==1) AoverIVecP=AoverIVec;
 	  cout << i << " PA "<< proposeActive << " " << psum << " "<< ptot << " " << psumP << " " << ptotP << endl;
 	  for(int I=0;I<nStates;I++) cout << qtlVec[i].delta[I] << " " ;
 	  cout << "    "  << SD << " " <<log(AoverIVec[SD])+maxAoverI << " " << log(pInactive)+maxAoverI;
@@ -1182,7 +1224,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	  cout << " " <<log(AoverIVecP[SD])+maxAoverIP << endl ;
 	}
 	
-
+	
 	int accept=0;
 	double inactiveMult=1.,inactiveMultP=1.;
 	if(!active ) inactiveMult=1.-inactiveProposal;
@@ -1190,7 +1232,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	if(u(gen)*ptotP*inactiveMult < inactiveMultP*ptot*exp(maxAoverI-maxAoverIP)) accept=1;
 	
 	
-
+	
 	if(!accept) {
 	  if(active) nRejectA2I++;
 	  else nRejectI2A++;
