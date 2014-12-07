@@ -352,7 +352,8 @@ int hmm::read(const string &filename){
   double S=(double) nStates,lambda=HMM.lambda;
   lambda*=(S-1.)/S;
   double sum=0,val;
-  vector<double> transSingle(2),transDouble(3),f(nComb),fnew(nComb); 
+  
+  vector<double> transSingle(2),transDouble(3),f(nComb),fnew(nComb),valVecI(nStates),valVecJ(nStates); 
   for(int l=0;l<nComb;l++){
     val=picomb[l];
     int snpLoc=(*lociMapPt)[start].isSNP;
@@ -371,18 +372,85 @@ int hmm::read(const string &filename){
     transSingle[1]=(1.+(S-1.)*eMult)/S;
     transSingle[0]=(1.-eMult)/S;
     transDouble[0]= transSingle[0]* transSingle[0];
-    transDouble[1]= transSingle[0]* transSingle[1];
-    transDouble[2]= transSingle[1]* transSingle[1];
+    transDouble[1]= transSingle[0]* transSingle[1] - transDouble[0];
+    transDouble[2]= transSingle[1]* transSingle[1]-2.*transDouble[1]-transDouble[0];
     if(0 ) cout << i << " " << (HMM.loci[i].pos-HMM.loci[i-1].pos)/lambda <<  " " << eMult << " " << transSingle[0] << " " << transSingle[1] << endl;
     sum=0;
-    int l=0;
+    val=0;
+    int l;
+    if(HMM.loci[i].newChrom){
+      for(int l=0;l<nComb;l++) fnew[l]=picomb[l];
+    }
+    else{
+      l=0;
+      val=0.;
+      for(int I2=0;I2<nStates;I2++){
+	for(int J2=0;J2<I2;J2++,l++){
+	  val+=2.*f[l];
+	}
+	val+=f[l];
+	l++;
+      }
+      val*=transDouble[0];
+      l=0;
+      for(int I1=0;I1<nStates;I1++){
+	for(int J1=0;J1<I1;J1++,l++){
+	  fnew[l]=val;
+	}
+	fnew[l]=val;
+	l++;
+      }
+      valVecI.assign(nStates,0.);
+      valVecJ.assign(nStates,0.);
+      l=0;
+      for(int I2=0;I2<nStates;I2++){
+	for(int J2=0;J2<I2;J2++,l++){
+	  valVecI[I2]+=f[l];
+	  valVecJ[J2]+=f[l];
+	  valVecJ[I2]+=f[l];
+	  valVecI[J2]+=f[l];
+	}
+	  valVecI[I2]+=f[l];
+	  valVecJ[I2]+=f[l];
+	  l++;
+      }
+      for(int I=0;I<nStates;I++){
+	valVecI[I]*=transDouble[1];
+	valVecJ[I]*=transDouble[1];
+      }
+      l=0;
+      for(int I1=0;I1<nStates;I1++){
+	for(int J1=0;J1<I1;J1++,l++){
+	  fnew[l]+=valVecI[I1];
+	  fnew[l]+=valVecJ[J1];
+	}
+	fnew[l]+=valVecI[I1];
+	fnew[l]+=valVecJ[I1];
+	l++;
+      }
+      l=0;
+      for(int I1=0;I1<nStates;I1++){
+	for(int J1=0;J1<=I1;J1++,l++){
+	  fnew[l]+=f[l]*transDouble[2];
+	}
+      }
+      
+    }
+    sum=0;
+    for(int l=0;l<nComb;l++) {
+      int snpLoc=(*lociMapPt)[i].isSNP;
+      if(snpLoc>=0) fnew[l]*=HMM.emit(snpLoc,l,X[snpLoc]);
+      sum+=fnew[l];
+    }
+    /*   
+      
+      l=0;
     for(int I1=0;I1<nStates;I1++){
       for(int J1=0;J1<=I1;J1++,l++){
 	if(HMM.loci[i].newChrom){
 	  val=picomb[l];
 
-	  int snpLoc=(*lociMapPt)[i].isSNP;
-	  if(snpLoc>=0) val*=HMM.emit(snpLoc,l,X[snpLoc]);
+	 
 	}
 	else{
 	  val=0;
@@ -397,13 +465,14 @@ int hmm::read(const string &filename){
 	    //val+=f[k]*transDouble[I1==I2+J1==I2];
 	    k++;
 	  }
-	  int snpLoc=(*lociMapPt)[i].isSNP;
-	  if(snpLoc>=0) val*=HMM.emit(snpLoc,l,X[snpLoc]);
 	}
+	int snpLoc=(*lociMapPt)[i].isSNP;
+	if(snpLoc>=0) val*=HMM.emit(snpLoc,l,X[snpLoc]);
 	fnew[l]=val;
 	sum+=val;
       }
     }
+    */
     for(int l=0;l<nComb;l++) {
       f[l]=fnew[l]/sum;
       fVec[i][l]=f[l];//scale
@@ -419,7 +488,8 @@ void backwardVec(const long start, const long end,hmm &HMM, const vector<int> &X
   double S=(double) nStates,lambda=HMM.lambda;
   vector<double> b(nComb),bNew(nComb);
   lambda*=(S-1.)/S;
-  vector<double> transSingle(2); 
+   vector<double> transSingle(2),transDouble(3),valVecI(nStates),valVecJ(nStates);
+   vector<double> eProbVec(nComb);
   double sum,val;
   sum=(double )nComb;
   for(int l=0;l<nComb;l++) {
@@ -431,8 +501,74 @@ void backwardVec(const long start, const long end,hmm &HMM, const vector<int> &X
     if(!HMM.loci[i+1].newChrom) eMult=exp(-((double)(HMM.loci[i+1].pos-HMM.loci[i].pos))/lambda);
     transSingle[1]=(1.+(S-1.)*eMult)/S;
     transSingle[0]=(1.-eMult)/S;
-    sum=0;
+    
+    transDouble[0]= transSingle[0]* transSingle[0];
+    transDouble[1]= transSingle[0]* transSingle[1] - transDouble[0];
+    transDouble[2]= transSingle[1]* transSingle[1]-2.*transDouble[1]-transDouble[0];
     int k=0;
+    val=0;
+    int l=0;
+    for(int I2=0;I2<nStates;I2++){
+      for(int J2=0;J2<=I2;J2++,l++){
+	double eProb=1.;
+	int snpLoc=(*lociMapPt)[i+1].isSNP;
+	if(snpLoc>=0) eProb=HMM.emit(snpLoc,l,X[snpLoc]);
+	eProbVec[l]=eProb;
+	if(HMM.loci[i+1].newChrom){
+	  val+=picomb[l]*b[l]*eProb;	      
+	}
+	else{
+	  val+=transDouble[0]*b[l]*eProb; 
+	  if(I2 !=J2)val+=transDouble[0]*b[l]*eProb; 
+	}
+      }
+    }
+    k=0;
+    for(int I2=0;I2<nStates;I2++){
+      for(int J2=0;J2<I2;J2++,k++){
+	bNew[k]=val;
+      }
+      bNew[k]=val;
+      k++;
+    }
+    if(!HMM.loci[i+1].newChrom){
+      valVecI.assign(nStates,0.);
+      valVecJ.assign(nStates,0.);
+      l=0;
+      for(int I1=0;I1<nStates;I1++){
+	for(int J1=0;J1<I1;J1++,l++){
+	  valVecI[I1]+=b[l]*eProbVec[l];
+	  valVecJ[J1]+=b[l]*eProbVec[l];
+	  valVecJ[I1]+=b[l]*eProbVec[l];
+	  valVecI[J1]+=b[l]*eProbVec[l];
+	}
+	  valVecI[I1]+=b[l]*eProbVec[l];
+	  valVecJ[I1]+=b[l]*eProbVec[l];
+	  l++;
+      }
+      for(int I=0;I<nStates;I++){
+	valVecI[I]*=transDouble[1];
+	valVecJ[I]*=transDouble[1];
+      }
+      l=0;
+      for(int I1=0;I1<nStates;I1++){
+	for(int J1=0;J1<I1;J1++,l++){
+	  bNew[l]+=valVecI[I1];
+	  bNew[l]+=valVecJ[J1];
+	}
+	bNew[l]+=valVecI[I1];
+	bNew[l]+=valVecJ[I1];
+	l++;
+      }
+      l=0;
+      for(int I1=0;I1<nStates;I1++){
+	for(int J1=0;J1<=I1;J1++,l++){
+	  bNew[l]+=b[l]*transDouble[2]*eProbVec[l];
+	}
+      }
+    }
+    /*  
+    k=0;
     for(int I1=0;I1<nStates;I1++){
       for(int J1=0;J1<=I1;J1++,k++){
 	val=0;
@@ -454,6 +590,12 @@ void backwardVec(const long start, const long end,hmm &HMM, const vector<int> &X
 	bNew[k]=val;
 	sum+=val;
       }
+    }
+    */
+    
+    sum=0;
+    for(k=0;k<nComb;k++){
+      sum+=bNew[k];
     }
     for(int k=0;k<nComb;k++) {
       b[k]=bNew[k]/sum;

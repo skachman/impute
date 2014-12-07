@@ -97,7 +97,8 @@ MCMCName=baseName+"_MCMCSamples.txt";
   double lambda=lambdaKb*1000.;
   int freqQTL=freqQTLKb*1000;
 
-
+  cout << argv[0] << ": Version 1.0" << "Nov., 30, 2014" << endl << endl;
+  
   cout << "Input Parameters" << endl <<endl;
   cout << setw(22) << "genoName = " << " " << genoName << endl;
   cout << setw(22) << "phenoName = " << " " << phenoName << endl;
@@ -531,6 +532,29 @@ MCMCName=baseName+"_MCMCSamples.txt";
     }
     HMM.initSeq();
 
+    if(0){
+      forwardVec(0,nLoci,HMM,X[0],HMM.piComb,f);
+      forward(0,nLoci,HMM,X[0],HMM.piComb);
+      for(int l=0;l<nComb;l++){
+	cout << "f " << HMM.stateI[l] << "/" << HMM.stateJ[l] ;
+	for(long i=0;i<4;i++){
+	  
+	  cout << " " << fixed << setprecision(4) << f[i][l] << " : " << HMM.loci[i].f[l];
+	}
+	cout << endl;
+      }
+      backwardVec(0, nLoci,HMM,X[0],HMM.piComb,b);
+      backward(0, nLoci,HMM,X[0],HMM.piComb);
+      for(int l=0;l<nComb;l++){
+	cout << "b " << HMM.stateI[l] << "/" << HMM.stateJ[l];
+	for(long i=nLoci-1;i>nLoci-5;i--){
+	  
+	  cout << " " << fixed << setprecision(4) << b[i][l] << " : " << HMM.loci[i].b[l];
+	}
+	cout << endl;
+      }
+
+    }
 #pragma omp parallel firstprivate(f,b,E,pState,piVec)
     {
       #pragma omp for schedule(static)
@@ -878,7 +902,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
   for(int s=0;s<nSamples;s++){
 
     //
-    // Fill in HaploVec
+    // Fill in HaploVec ---------------------------------------------
     //
     if((s%FreqToSampleHaplo)==0){
 
@@ -935,19 +959,19 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	  if(! HMM.loci[i+1].newChrom) eMult=exp(-((double)(HMM.loci[i+1].pos-HMM.loci[i].pos))/lambda);
 	  transSingle[1]=(1.+(S-1.)*eMult)/S;
 	  transSingle[0]=(1.-eMult)/S;
-
+	  
 	  for(int l=0;l<nComb;l++){
-
-	  int I1=HMM.stateI[l]; 
-	  int J1=HMM.stateJ[l];
-	  int I2=HMM.stateI[ranClass]; 
-	  int J2=HMM.stateJ[ranClass];
-	  Pval=transSingle[I1==I2]*transSingle[J1==J2];
-	  if(I2!=J2) Pval+=transSingle[I1==J2]*transSingle[J1==I2];
-	  //Pval*=HMM.loci[i].f[l];
-	  Pval*=f[i][l];
-	  Pvec[l]=Pval;
-	  Psum+=Pval;
+	    
+	    int I1=HMM.stateI[l]; 
+	    int J1=HMM.stateJ[l];
+	    int I2=HMM.stateI[ranClass]; 
+	    int J2=HMM.stateJ[ranClass];
+	    Pval=transSingle[I1==I2]*transSingle[J1==J2];
+	    if(I2!=J2) Pval+=transSingle[I1==J2]*transSingle[J1==I2];
+	    //Pval*=HMM.loci[i].f[l];
+	    Pval*=f[i][l];
+	    Pvec[l]=Pval;
+	    Psum+=Pval;
 	  }
 	  for(int l=0;l<nComb;l++){
 	    Pvec[l]/=Psum;
@@ -963,13 +987,13 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	  if(q>=0)XHaploNew[q]=ranClass;
 	  logPNewvsOld+=log(Pvec[ranClass]);
 	}
-
+	
 	double yDevNew=y[a]-mu;
 	for(int iCl=0;iCl<nClass;iCl++){
 	  yDevNew-=betaClass[iCl][posMatrix[iCl][a]];
 	}
 	for(int iCv=0;iCv<nCovariate;iCv++) yDevNew-=valMatrix[iCv][a]*betaCov[iCv]; 
-	    
+	
 	for(long i=0;i<nQTL;i++){
 	  long locus=activeLoci[i];
 	  int l=XHaploNew[locus];

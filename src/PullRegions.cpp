@@ -82,6 +82,8 @@ int main(int argc,char **argv){
  }
  double lambda=lambdaKb*1000.;
 
+ cout << argv[0] << ": Version 1.0" << "Nov., 30, 2014" << endl << endl;
+
  
  cout << "Input Parameters" << endl <<endl;
  cout << setw(22) << "genoName = " << " " << genoName << endl;
