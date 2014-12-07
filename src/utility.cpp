@@ -119,13 +119,16 @@ void qtlLocus::init(int ns,double sig2b,double pi){
   uniform_real_distribution<double> u(0.,1.);
   normal_distribution<double> z(0.,1.);
  
-  b=sqrt(sig2b)*z(gen);
+  b=0;
   delta.assign(ns,0);
-  for(int i=0;i<ns;i++) {
-    if(u(gen) < .5) delta[i]=1;
-  }
   active=0;
-  if(u(gen)>pi) active=1;
+  if(u(gen)>pi) {
+    active=1;
+    b=sqrt(sig2b)*z(gen);
+    for(int i=0;i<ns;i++) {
+      if(u(gen) < .5) delta[i]=1;
+    }
+  }
 }
 
 

@@ -29,6 +29,7 @@ int main(int argc,char **argv){
   double pi=.99,mu=0,inactiveProposal=0.9;
   double nusig2e=10,nusig2b=4;
   int deltaSampler=1;
+  int enableJiggle=0;
   
 MCMCName=baseName+"_MCMCSamples.txt";
   QTLName=baseName+"_QTLResults.txt";
@@ -57,6 +58,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
     config.Get("nSamples",nSamples);
     config.Get("nBurnIn",nBurnIn);
     config.Get("deltaSampler",deltaSampler);
+    config.Get("enableJiggle",enableJiggle);
     config.Get("FreqToSampleHaplo",FreqToSampleHaplo);
     config.Get("printFreq",printFreq);
     config.Get("outputFreq",outputFreq);
@@ -97,7 +99,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
   double lambda=lambdaKb*1000.;
   int freqQTL=freqQTLKb*1000;
 
-  cout << argv[0] << ": Version 1.1" << "Dec., 6, 2014" << endl << endl;
+  cout << argv[0] << ": Version 1.2" << " Dec. 7, 2014" << endl << endl;
   
   cout << "Input Parameters" << endl <<endl;
   cout << setw(22) << "genoName = " << " " << genoName << endl;
@@ -114,7 +116,8 @@ MCMCName=baseName+"_MCMCSamples.txt";
   cout << setw(22) << "SNPName = " << " " << SNPName <<endl;
   cout << setw(22) << "nSamples = " << " " << nSamples << endl;
   cout << setw(22) << "nBurnIn = " << " " << nBurnIn << endl;
-  cout << setw(22) << "deltaSampler = " << " " << deltaSampler << " # 1=Use full sampler, 2=use nState sampler"<<endl;
+  cout << setw(22) << "deltaSampler = " << " " << deltaSampler << " # 1=Use full sampler, 2=Use nState sampler"<<endl;
+  cout << setw(22) << "enableJiggle = " << " " << enableJiggle << " # 0=Don't jiggle position, 1=Enable jiggle position sampler"<<endl;
   cout << setw(22) << "FreqToSampleHaplo = " << " " << FreqToSampleHaplo << endl;
   cout << setw(22) << "printFreq = " << " " << printFreq << endl;
   cout << setw(22) << "outputFreq = " << " " << outputFreq << endl;
@@ -860,7 +863,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
   gHatResults << "ID\tgHat\tPEV"<< endl;
   vector<double> logPHaplo(nPheno);
 
-  vector<int> dVec(nStates,0),deltaZero(nStates,0),deltaOne(nStates,1),dsum(nStates,0),dsum2(nStates,0),deltaBase;
+  vector<int> dVec(nStates,0),dVec1(nStates,0),deltaZero(nStates,0),deltaOne(nStates,1),dsum(nStates,0),dsum2(nStates,0),deltaBase;
   vector<vector<int> > deltaStates;
   int s;
   do{
@@ -1329,6 +1332,89 @@ MCMCName=baseName+"_MCMCSamples.txt";
       if(s>=nBurnIn)qtlSumVec[i].updateSum(qtlVec[i]);
       
     }
+    if(enableJiggle){
+      
+      //int q=-1;
+      for(int i=0;i<(nQTLLoci-1);i++){
+	/*
+	  if(qtlVec[i].active && q>-1 && activeLoci[q]!=i){
+	  q++;
+	  }
+	*/
+	if(qtlVec[i].active || qtlVec[i+1].active){
+	  double ssSw=0.;
+	  double probSw=0.;
+	  int a=qtlVec[i].active;
+	  double b=qtlVec[i].b;
+	  dVec=qtlVec[i].delta;
+	  int a1=qtlVec[i+1].active;
+	  double b1=qtlVec[i+1].b;
+	  dVec1=qtlVec[i+1].delta;
+	  for(int a=0;a<nPheno;a++){
+	    int seqClass=XHaplo[i][a];
+	    int seq1Class=XHaplo[i+1][a]; 
+	    int I=HMM.stateI[seqClass];
+	    int J=HMM.stateJ[seqClass];
+	    int I1=HMM.stateI[seq1Class];
+	    int J1=HMM.stateJ[seq1Class];
+	    double yd=yDev[a]-((dVec[I1]+dVec[J1])-(dVec[I]+dVec[J]))*(b-b1);
+	    ssSw+=yd*yd-yDev[a]*yDev[a];
+	  }
+	  
+	  probSw=exp(-.5*ssSw/sig2e);
+	  if(u(gen) < probSw/(1.+probSw)){
+	    //    cout << "Switched sample: " << s << " " << i << " " << a<< a1 << "->" << a1 << a << endl; 
+	    for(int a=0;a<nPheno;a++){
+	      int seqClass=XHaplo[i][a];
+	      int seq1Class=XHaplo[i+1][a]; 
+	      int I=HMM.stateI[seqClass];
+	      int J=HMM.stateJ[seqClass];
+	      int I1=HMM.stateI[seq1Class];
+	      int J1=HMM.stateJ[seq1Class];
+	      yDev[a]-=((dVec[I1]+dVec[J1])-(dVec[I]+dVec[J]))*(b-b1);
+	    }
+	    /*if(qtlVec[i+1].active){
+	      q++;
+	      if(q>=nQTL) {
+	      cout << "Shouldn't happen! " << i << " " << q << " " << nQTLLoci << " " << nQTL <<endl;
+	      exit(999);
+	      }
+	      if(!qtlVec[i].active){
+	      activeLoci[q]=i;
+	      }
+	      }
+	      else{
+	      activeLoci[q]=i+1;
+	      }*/	      
+	    qtlVec[i].active=a1;
+	    qtlVec[i].b=b1;
+	    qtlVec[i].delta=dVec1;
+	    qtlVec[i+1].active=a;
+	    qtlVec[i+1].b=b;
+	    qtlVec[i+1].delta=dVec;
+	  }
+	  
+	}
+      }
+      int nQTLOld=activeLoci.size();
+      nQTL=0;
+      activeLoci.resize(0);
+      for(long i=0;i<nQTLLoci;i++){
+	if(qtlVec[i].active) {
+	  activeLoci.push_back(i);
+	  nQTL++;
+	}
+      }
+      //nQTL=activeLoci.size();
+      //if(nQTL != nQTLOld) {
+      //cout << "nQTL  " << nQTLOld << "->" << nQTL << " " << activeLoci.size() << " " << nQTLLoci <<endl;
+      //exit(999);
+      //}
+      
+    }
+	
+
+    
     if(0){
       //Jiggle QTL location
       nQTL=activeLoci.size();
