@@ -1353,12 +1353,14 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	  for(int a=0;a<nPheno;a++){
 	    int seqClass=XHaplo[i][a];
 	    int seq1Class=XHaplo[i+1][a]; 
-	    int I=HMM.stateI[seqClass];
-	    int J=HMM.stateJ[seqClass];
-	    int I1=HMM.stateI[seq1Class];
-	    int J1=HMM.stateJ[seq1Class];
-	    double yd=yDev[a]-((dVec[I1]+dVec[J1])-(dVec[I]+dVec[J]))*(b-b1);
-	    ssSw+=yd*yd-yDev[a]*yDev[a];
+	    if(seqClass != seq1Class){
+	      int I=HMM.stateI[seqClass];
+	      int J=HMM.stateJ[seqClass];
+	      int I1=HMM.stateI[seq1Class];
+	      int J1=HMM.stateJ[seq1Class];
+	      double yd=yDev[a]-((dVec[I1]+dVec[J1])-(dVec[I]+dVec[J]))*(b-b1);
+	      ssSw+=yd*yd-yDev[a]*yDev[a];
+	    }
 	  }
 	  
 	  probSw=exp(-.5*ssSw/sig2e);
@@ -1366,12 +1368,14 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	    //    cout << "Switched sample: " << s << " " << i << " " << a<< a1 << "->" << a1 << a << endl; 
 	    for(int a=0;a<nPheno;a++){
 	      int seqClass=XHaplo[i][a];
-	      int seq1Class=XHaplo[i+1][a]; 
-	      int I=HMM.stateI[seqClass];
-	      int J=HMM.stateJ[seqClass];
-	      int I1=HMM.stateI[seq1Class];
-	      int J1=HMM.stateJ[seq1Class];
-	      yDev[a]-=((dVec[I1]+dVec[J1])-(dVec[I]+dVec[J]))*(b-b1);
+	      int seq1Class=XHaplo[i+1][a];
+	      if(seqClass != seq1Class){
+		int I=HMM.stateI[seqClass];
+		int J=HMM.stateJ[seqClass];
+		int I1=HMM.stateI[seq1Class];
+		int J1=HMM.stateJ[seq1Class];
+		yDev[a]-=((dVec[I1]+dVec[J1])-(dVec[I]+dVec[J]))*(b-b1);
+	      }
 	    }
 	    /*if(qtlVec[i+1].active){
 	      q++;
