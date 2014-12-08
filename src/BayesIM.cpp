@@ -1409,7 +1409,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	  nQTL++;
 	}
       }
-      //nQTL=activeLoci.size();
+      nQTL=activeLoci.size();
       //if(nQTL != nQTLOld) {
       //cout << "nQTL  " << nQTLOld << "->" << nQTL << " " << activeLoci.size() << " " << nQTLLoci <<endl;
       //exit(999);
