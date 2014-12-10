@@ -29,7 +29,7 @@ int main(int argc,char **argv){
   double pi=.99,mu=0,inactiveProposal=0.9;
   double nusig2e=10,nusig2b=4;
   int deltaSampler=1;
-  int enableJiggle=0;
+  int enableSwapActive=0;
   
 MCMCName=baseName+"_MCMCSamples.txt";
   QTLName=baseName+"_QTLResults.txt";
@@ -58,7 +58,8 @@ MCMCName=baseName+"_MCMCSamples.txt";
     config.Get("nSamples",nSamples);
     config.Get("nBurnIn",nBurnIn);
     config.Get("deltaSampler",deltaSampler);
-    config.Get("enableJiggle",enableJiggle);
+    config.Get("enableJiggle",enableSwapActive);
+    config.Get("enableSwapActive",enableSwapActive);
     config.Get("FreqToSampleHaplo",FreqToSampleHaplo);
     config.Get("printFreq",printFreq);
     config.Get("outputFreq",outputFreq);
@@ -99,7 +100,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
   double lambda=lambdaKb*1000.;
   int freqQTL=freqQTLKb*1000;
 
-  cout << argv[0] << ": Version 1.2" << " Dec. 7, 2014" << endl << endl;
+  cout << argv[0] << ": Version 1.3" << " Dec. 10, 2014" << endl << endl;
   
   cout << "Input Parameters" << endl <<endl;
   cout << setw(22) << "genoName = " << " " << genoName << endl;
@@ -117,7 +118,8 @@ MCMCName=baseName+"_MCMCSamples.txt";
   cout << setw(22) << "nSamples = " << " " << nSamples << endl;
   cout << setw(22) << "nBurnIn = " << " " << nBurnIn << endl;
   cout << setw(22) << "deltaSampler = " << " " << deltaSampler << " # 1=Use full sampler, 2=Use nState sampler"<<endl;
-  cout << setw(22) << "enableJiggle = " << " " << enableJiggle << " # 0=Don't jiggle position, 1=Enable jiggle position sampler"<<endl;
+  cout <<  "                         # 3=Use full sampler with locus swap, 2=Use nState sampler with locus swap"<<endl;
+  cout << setw(22) << "enableSwapActive = " << " " << enableSwapActive << " # 0=Don't swap active locus, 1=Enable swap active locus sampler"<<endl;
   cout << setw(22) << "FreqToSampleHaplo = " << " " << FreqToSampleHaplo << endl;
   cout << setw(22) << "printFreq = " << " " << printFreq << endl;
   cout << setw(22) << "outputFreq = " << " " << outputFreq << endl;
@@ -145,8 +147,8 @@ MCMCName=baseName+"_MCMCSamples.txt";
   cout << setw(22) << "inactiveProposal = " << " " << inactiveProposal << endl;
   cout << endl << endl;
   
-  //  cout << "Maximum value for int:  " << numeric_limits<int>::max() << '\n';
-  //  cout << "Maximum value for long: " << numeric_limits<long>::max() << '\n';
+  //cout << "Maximum value for int:  " << numeric_limits<int>::max() << '\n';
+  //cout << "Maximum value for long: " << numeric_limits<long>::max() << '\n';
 
   //matvec::UniformDist u;
   uniform_real_distribution<double> u(0.,1.);
@@ -1082,6 +1084,67 @@ MCMCName=baseName+"_MCMCSamples.txt";
     int nRejectA2I=0;
 
     for(long i=0;i<nQTLLoci;i++){
+
+      
+      if(deltaSampler==4 || deltaSampler==3){
+	if(i<(nQTLLoci-1)){
+	  if(qtlVec[i].active || qtlVec[i+1].active){
+	    int a0=qtlVec[i].active;
+	    double b=qtlVec[i].b;
+	    dVec=qtlVec[i].delta;
+	    int a1=qtlVec[i+1].active;
+	    double b1=qtlVec[i+1].b;
+	    dVec1=qtlVec[i+1].delta;
+	    double ssSw;
+	    for(int a=0;a<nPheno;a++){
+	      	int seqClass=XHaplo[i][a];
+	      	int seq1Class=XHaplo[i+1][a];
+		if(seqClass != seq1Class){
+		  int I=HMM.stateI[seqClass];
+		  int J=HMM.stateJ[seqClass];
+		  int I1=HMM.stateI[seq1Class];
+		  int J1=HMM.stateJ[seq1Class];
+		  double yd=yDev[a];
+		  if(a0){
+		    yd-=((dVec[I1]+dVec[I1])-(dVec[I]+dVec[I]))*b;
+		  }
+		  if(a1){
+		    yd-=((dVec1[I]+dVec1[I])-(dVec1[I1]+dVec1[I1]))*b1;
+		  }
+		  ssSw+=(yd*yd-yDev[a]*yDev[a])*rinverse[a];
+		}
+	    }
+	    double probSw=exp(-.5*ssSw/sig2e);
+	    if(u(gen)*(1.+probSw)<probSw){
+	      for(int a=0;a<nPheno;a++){
+	      	int seqClass=XHaplo[i][a];
+	      	int seq1Class=XHaplo[i+1][a];
+		if(seqClass != seq1Class){
+		  int I=HMM.stateI[seqClass];
+		  int J=HMM.stateJ[seqClass];
+		  int I1=HMM.stateI[seq1Class];
+		  int J1=HMM.stateJ[seq1Class];
+		  if(a0){
+		    yDev[a]-=((dVec[I1]+dVec[I1])-(dVec[I]+dVec[I]))*b;
+		  }
+		  if(a1){
+		    yDev[a]-=((dVec1[I]+dVec1[I])-(dVec1[I1]+dVec1[I1]))*b1;
+		  }
+		}
+	      }
+	      qtlVec[i].active=a1;
+	      qtlVec[i].b=b1;
+	      qtlVec[i].delta=dVec1;
+	      qtlVec[i+1].active=a0;
+	      qtlVec[i+1].b=b;
+	      qtlVec[i+1].delta=dVec;
+	    }
+	    
+	  }
+	}
+      }
+
+      
       int active=qtlVec[i].active;
       int nowActive=0;
       int proposeActive=0;
@@ -1162,7 +1225,6 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	}
 
 
-
       if(active || proposeActive){
 	
 	double psum=0,pInactive=1,ptot=0;
@@ -1173,6 +1235,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	if(!active) qtlVec[i].delta=deltaZero;
 	
 	switch(deltaSampler){
+	case 3:
 	case 1:
 	  
 	  calcDeltaProposalFull(sig2e,sig2b,qtlVec[i].delta,deltaStates,
@@ -1206,6 +1269,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	  ptotP=psumP;
 	  if(proposeActive)ptotP+=pInactiveP;
 	  break;
+	case 4:
 	case 2:
 	  
 	  
@@ -1276,6 +1340,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	  else {
 	    nRejectI2A++;
 	    qtlVec[i].delta=deltaZero;
+	    qtlVec[i].b=0;
 	  }
 	}
 	if(accept || active){	
@@ -1332,195 +1397,35 @@ MCMCName=baseName+"_MCMCSamples.txt";
       if(s>=nBurnIn)qtlSumVec[i].updateSum(qtlVec[i]);
       
     }
-    if(enableJiggle){
-      
-      //int q=-1;
-      for(int i=0;i<(nQTLLoci-1);i++){
-	/*
-	  if(qtlVec[i].active && q>-1 && activeLoci[q]!=i){
-	  q++;
-	  }
-	*/
-	if(qtlVec[i].active || qtlVec[i+1].active){
-	  double ssSw=0.;
-	  double probSw=0.;
-	  int a=qtlVec[i].active;
-	  double b=qtlVec[i].b;
-	  dVec=qtlVec[i].delta;
-	  int a1=qtlVec[i+1].active;
-	  double b1=qtlVec[i+1].b;
-	  dVec1=qtlVec[i+1].delta;
-	  for(int a=0;a<nPheno;a++){
-	    int seqClass=XHaplo[i][a];
-	    int seq1Class=XHaplo[i+1][a]; 
-	    if(seqClass != seq1Class){
-	      int I=HMM.stateI[seqClass];
-	      int J=HMM.stateJ[seqClass];
-	      int I1=HMM.stateI[seq1Class];
-	      int J1=HMM.stateJ[seq1Class];
-	      double yd=yDev[a]-((dVec[I1]+dVec[J1])-(dVec[I]+dVec[J]))*(b-b1);
-	      ssSw+=yd*yd-yDev[a]*yDev[a];
-	    }
-	  }
-	  
-	  probSw=exp(-.5*ssSw/sig2e);
-	  if(u(gen) < probSw/(1.+probSw)){
-	    //    cout << "Switched sample: " << s << " " << i << " " << a<< a1 << "->" << a1 << a << endl; 
-	    for(int a=0;a<nPheno;a++){
-	      int seqClass=XHaplo[i][a];
-	      int seq1Class=XHaplo[i+1][a];
-	      if(seqClass != seq1Class){
-		int I=HMM.stateI[seqClass];
-		int J=HMM.stateJ[seqClass];
-		int I1=HMM.stateI[seq1Class];
-		int J1=HMM.stateJ[seq1Class];
-		yDev[a]-=((dVec[I1]+dVec[J1])-(dVec[I]+dVec[J]))*(b-b1);
-	      }
-	    }
-	    /*if(qtlVec[i+1].active){
-	      q++;
-	      if(q>=nQTL) {
-	      cout << "Shouldn't happen! " << i << " " << q << " " << nQTLLoci << " " << nQTL <<endl;
-	      exit(999);
-	      }
-	      if(!qtlVec[i].active){
-	      activeLoci[q]=i;
-	      }
-	      }
-	      else{
-	      activeLoci[q]=i+1;
-	      }*/	      
-	    qtlVec[i].active=a1;
-	    qtlVec[i].b=b1;
-	    qtlVec[i].delta=dVec1;
-	    qtlVec[i+1].active=a;
-	    qtlVec[i+1].b=b;
-	    qtlVec[i+1].delta=dVec;
-	  }
-	  
-	}
-      }
-      int nQTLOld=activeLoci.size();
-      nQTL=0;
-      activeLoci.resize(0);
-      for(long i=0;i<nQTLLoci;i++){
-	if(qtlVec[i].active) {
-	  activeLoci.push_back(i);
-	  nQTL++;
-	}
-      }
-      nQTL=activeLoci.size();
-      //if(nQTL != nQTLOld) {
-      //cout << "nQTL  " << nQTLOld << "->" << nQTL << " " << activeLoci.size() << " " << nQTLLoci <<endl;
-      //exit(999);
-      //}
-      
+
+    //Calc sig2g
+    ssg=0;
+    double sumg=0;
+    //#pragma omp parallel for schedule(static) reduction(+:ssg,sumg)
+    for(int a=0;a<nPheno;a++) {
+      ssg+=gHat[a]*gHat[a];
+      sumg+=gHat[a];
     }
-	
+    sumg/=(double) nPheno;
+    sig2g=ssg/((double) nPheno)-(sumg*sumg);
+    
+    //update gHatSum
+    if(s>=nBurnIn){
+      //#pragma omp parallel for schedule(static)
+      for(int a=0;a<nPheno;a++) {
+	gHat[a]-=sumg;
+	gHatSum[a]+=gHat[a];
+	gHatSumSq[a]+=gHat[a]*gHat[a];
+      }
+    }
 
     
-    if(0){
-      //Jiggle QTL location
-      nQTL=activeLoci.size();
-      for(int q=0;q<nQTL;q++){
-	int i=activeLoci[q];
-	double ssp=0.,ssc=0.,ssn=0.;
-	double probp=0.,probc=1.,probn=0;
-	double b=qtlVec[i].b;
-	dVec=qtlVec[i].delta;
-	if(i>0 && !qtlVec[i-1].active){
-	  //cout << "i-1 " << i-1 << " " << q << endl;
-	  for(int a=0;a<nPheno;a++){
-	    int seqClass=XHaplo[i][a];
-	    int seq0Class=XHaplo[i-1][a]; 
-	    if(seqClass != seq0Class){
-	      int I=HMM.stateI[seqClass];
-	      int J=HMM.stateJ[seqClass];
-	      int I0=HMM.stateI[seq0Class];
-	      int J0=HMM.stateJ[seq0Class];
-	      double yd=yDev[a]-((dVec[I0]+dVec[J0])-(dVec[I]+dVec[J]))*b;
-	      ssp+=yd*yd-yDev[a]*yDev[a];
-	    }
-	  }
-	  //cout << " Done" << endl;
-	  probp=exp(-.5*ssp/sig2e);
-	}
-	if((i+1)<nQTLLoci && !qtlVec[i+1].active){
-	  //cout << "i+1 " << i+1 << " "<< nQTLLoci << " "  << q << endl;
-	  //#pragma omp parallel for reduction (+:ssn) schedule(static)
-	  for(int a=0;a<nPheno;a++){
-	    int seqClass=XHaplo[i][a];
-	    int seq0Class=XHaplo[i+1][a]; 
-	    if(seqClass != seq0Class){
-	      int I=HMM.stateI[seqClass];
-	      int J=HMM.stateJ[seqClass];
-	      int I0=HMM.stateI[seq0Class];
-	      int J0=HMM.stateJ[seq0Class];
-	      double yd=yDev[a]-((dVec[I0]+dVec[J0])-(dVec[I]+dVec[J]))*b;
-	      ssn+=yd*yd-yDev[a]*yDev[a];
-	    }
-	  }
-	  probn=exp(-.5*ssn/sig2e);
-	  //	  cout << " Done" << endl;
-	}
-	double sump=probp+probc+probn;
-	double uSmp=u(gen)*sump;
-	if(uSmp<(probp+probn)){
-	  if(uSmp<probp){
-	    //cout << "i-1 "<< i-1 << " " << q << endl;
-	    activeLoci[q]=i-1;
-	    qtlVec[i-1].b=b;
-	    qtlVec[i-1].active=1;
-	    qtlVec[i-1].delta=dVec;
+ 	
 
-	    yDevpt=yDev.data();
-	    gHatpt=gHat.data();
-	    //#pragma omp parallel for schedule(static) 
-	    for(int a=0;a<nPheno;a++){
-	      int seqClass=XHaplo[i][a];
-	      int seq0Class=XHaplo[i-1][a]; 
-	      if(seqClass != seq0Class){
-		int I=HMM.stateI[seqClass];
-		int J=HMM.stateJ[seqClass];
-		int I0=HMM.stateI[seq0Class];
-		int J0=HMM.stateJ[seq0Class];
-		yDev[a]-=((dVec[I0]+dVec[J0])-(dVec[I]+dVec[J]))*b;
-		gHat[a]+=((dVec[I0]+dVec[J0])-(dVec[I]+dVec[J]))*b;
-	      }
-	    }
-	    //cout << "-" << endl;
-	  }
-	  else{
-
-	    //cout << "i+1 "<< i+1 << " " << q << endl;
-	    activeLoci[q]=i+1;
-	    qtlVec[i+1].b=b;
-	    qtlVec[i+1].active=1;
-	    qtlVec[i+1].delta=dVec;
-	    //#pragma omp parallel for schedule(static) 
-	    for(int a=0;a<nPheno;a++){
-	      int seqClass=XHaplo[i][a];
-	      int seq0Class=XHaplo[i+1][a]; 
-	      if(seqClass != seq0Class){
-		int I=HMM.stateI[seqClass];
-		int J=HMM.stateJ[seqClass];
-		int I0=HMM.stateI[seq0Class];
-		int J0=HMM.stateJ[seq0Class];
-		yDev[a]-=((dVec[I0]+dVec[J0])-(dVec[I]+dVec[J]))*b;
-		gHat[a]+=((dVec[I0]+dVec[J0])-(dVec[I]+dVec[J]))*b;
-	      }
-	    }
-
-	    //cout << "-" << endl;
-	  }
-	  qtlVec[i].b=0;
-	  qtlVec[i].active=0;
-	}
-      }
-    }
-      computeLhsV=0;
+    
+    computeLhsV=0;
     //update mu;
-    double sumXY=0,sumXX=0;
+    double sumXY=0,sumXX=.0001;
     //#pragma omp parallel for reduction (+:sumXY,sumXX) schedule(static)
     for(int a=0;a<nPheno;a++){
       sumXY+=rinverse[a]*yDev[a];
@@ -1566,26 +1471,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
       betaCov[iCv]+=deltaBeta;
     }
 
-    //Calc sig2g
-    ssg=0;
-    double sumg=0;
-    //#pragma omp parallel for schedule(static) reduction(+:ssg,sumg)
-    for(int a=0;a<nPheno;a++) {
-      ssg+=gHat[a]*gHat[a];
-      sumg+=gHat[a];
-    }
-    sumg/=(double) nPheno;
-    sig2g=ssg/((double) nPheno)-(sumg*sumg);
-
-    //update gHatSum
-    if(s>=nBurnIn){
-      //#pragma omp parallel for schedule(static)
-      for(int a=0;a<nPheno;a++) {
-	gHat[a]-=sumg;
-	gHatSum[a]+=gHat[a];
-	gHatSumSq[a]+=gHat[a]*gHat[a];
-      }
-    }
+  
     // update sig2r;
     for(int iCl=0;iCl<nClass;iCl++){
       int iR=classRandom[iCl];
@@ -1638,7 +1524,119 @@ MCMCName=baseName+"_MCMCSamples.txt";
 	if(windowVec[i]) windowSumVec[i]++;
       }
     }
-  
+    if(enableSwapActive){
+      
+      
+      for(long i=(s%1);i<(nQTLLoci-1);i+=2){
+	
+	if(qtlVec[i].active != qtlVec[i+1].active){
+	  int a0=qtlVec[i].active;
+	  int a1=qtlVec[i+1].active;
+	  double b;
+	  if(a0){
+	    dVec=qtlVec[i].delta;
+	    b=qtlVec[i].b;
+	  }
+	  else{
+	    dVec=qtlVec[i+1].delta;
+	    b=qtlVec[i+1].b;
+	  }
+	  double rhs=0.,rhs1=0.,lhs=sig2e/sig2b,lhs1=sig2e/sig2b,ssSw=0.;
+	  for(int a=0;a<nPheno;a++){
+	    int seqClass=XHaplo[i][a];
+	    int seq1Class=XHaplo[i+1][a];
+	    //if(seqClass!=seq1Class){
+	      int I=HMM.stateI[seqClass];
+	      int J=HMM.stateJ[seqClass];
+	      int I1=HMM.stateI[seq1Class];
+	      int J1=HMM.stateJ[seq1Class];
+	      double yd=yDev[a];
+	      if(a0) {
+		yd-=((dVec[I1]  +dVec[J1])-(dVec[I]  +dVec[J]))*b;
+		yDev[a]+=(dVec[I]  +dVec[J])*b;
+	      }
+	      else{		
+		yd+=((dVec[I1]  +dVec[J1])-(dVec[I]  +dVec[J]))*b;		
+		yDev[a]+=(dVec[I1]  +dVec[J1])*b;
+	      }
+	      //ssSw+=(yd*yd-yDev[a]*yDev[a])*rinverse[a];
+	      rhs+=rinverse[a]*yDev[a]*(dVec[I]  +dVec[J]);
+	      lhs+=rinverse[a]*(dVec[I]  +dVec[J])*(dVec[I]  +dVec[J]);
+	      rhs1+=rinverse[a]*yDev[a]*(dVec[I1]  +dVec[J1]);
+	      lhs1+=rinverse[a]*(dVec[I1]  +dVec[J1])*(dVec[I1]  +dVec[J1]);
+	      //}
+	  }
+	  rhs/=sig2e;
+	  rhs1/=sig2e;
+	  lhs/=sig2e;
+	  lhs1/=sig2e;
+	  //double probSw=exp(-0.5*ssSw/sig2e);
+	  double prob0=exp(0.5*(rhs*rhs/lhs-rhs1*rhs1/lhs1))*sqrt(lhs1/lhs);
+	  
+	  if(u(gen) < prob0/(1.+prob0)){
+	    a0=1;
+	    b=rhs/lhs+Z(gen)/sqrt(lhs);
+	    qtlVec[i].active=1;
+	    qtlVec[i].delta=dVec;
+	    qtlVec[i].b=b;
+	    
+	    a1=0;
+	    qtlVec[i+1].active=0;
+	    qtlVec[i+1].delta=deltaZero;
+	    qtlVec[i+1].b=0.;
+	  }
+	  else{
+	    a0=0;
+	    qtlVec[i].active=0;
+	    qtlVec[i].delta=deltaZero;
+	    qtlVec[i].b=0.;
+	    
+	    a1=1;
+	    b=rhs1/lhs1+Z(gen)/sqrt(lhs1);
+	    qtlVec[i+1].active=1;
+	    qtlVec[i+1].delta=dVec;
+	    qtlVec[i+1].b=b;
+	  }
+
+	    
+	  for(int a=0;a<nPheno;a++){
+	    
+	    int seqClass=XHaplo[i][a];
+	    int seq1Class=XHaplo[i+1][a];
+	    int I=HMM.stateI[seqClass];
+	    int J=HMM.stateJ[seqClass];
+	    int I1=HMM.stateI[seq1Class];
+	    int J1=HMM.stateJ[seq1Class];
+	    if(a1) {
+	      yDev[a]-=(dVec[I1]  +dVec[J1])*b;
+	    }
+	    else{		
+	      yDev[a]-=(dVec[I]  +dVec[J])*b;
+	    }
+	  }
+	}
+      }
+
+      int nQTLOld=activeLoci.size();
+      //nQTL=0;
+      activeLoci.resize(0);
+      for(long i=0;i<nQTLLoci;i++){
+	if(qtlVec[i].active) {
+	  activeLoci.push_back(i);
+	  //nQTL++;
+	}
+      }
+      nQTL=activeLoci.size();
+      long sumAcLoc1=0;
+      
+      
+      if(nQTL != nQTLOld) {
+      cout << "nQTL  " << nQTLOld << "->" << nQTL << " " << activeLoci.size() << " " << nQTLLoci <<endl;
+      exit(999);
+      }
+      
+     } // End enableSwapActive
+
 
     if((s % printFreq)==0){
       cout << endl;
