@@ -347,7 +347,14 @@ int hmm::read(const string &filename){
 
  
 
-
+void recombVec(hmm &HMM, const vector<int> &X,const vector<double> &picomb,const vector< vector<double> > &fVec,const vector< vector<double> > &bVec,vector<double> &rf){
+  int nComb=HMM.nComb,nStates=HMM.nStates;
+  vector<locusMap> *lociMapPt=HMM.lociMapPt;
+  double S=(double) nStates,lambda=HMM.lambda;
+  lambda*=(S-1.)/S;
+  
+  vector<double> transSingle(2),transDouble(3),f(nComb),fnew(nComb),valVecI(nStates),valVecJ(nStates); 
+}
 
  void forwardVec(const long start, const long end,hmm &HMM, const vector<int> &X,const vector<double> &picomb,vector< vector<double> > &fVec){
   int nComb=HMM.nComb,nStates=HMM.nStates;

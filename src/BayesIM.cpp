@@ -533,6 +533,7 @@ int main(int argc,char **argv){
   vector<double> locusf(nComb),locusE(nStates);
   vector< vector<double> > f(nLoci,locusf),b(nLoci,locusf);
   vector<vector<double> > E(nLoci,locusE),pState(nLoci,locusE),piVec(nLoci,locusf);
+  vector<double> recombFrac(nLoci,0.),rf(nLoci,0.);
   vector<double> pVec(nComb);
   for(int iter=0;iter<nIter;iter++){
     cout << "Iteration " << iter <<endl;
@@ -567,7 +568,7 @@ int main(int argc,char **argv){
       }
 
     }
-#pragma omp parallel firstprivate(f,b,E,pState,piVec)
+#pragma omp parallel firstprivate(f,b,E,pState,piVec,rf)
     {
       #pragma omp for schedule(static)
       for(int seq=0;seq< X.size();seq++){
@@ -578,7 +579,9 @@ int main(int argc,char **argv){
 	vector<double> Pvec(nComb);
 	
 	//Compute Probabilities and estimates
-	
+	if(iter==(nIter-1)){
+	  
+	}
 	for(long i=0;i<nLoci;i++){
 	  double Psum=0;
 	  double Pval;
@@ -1430,8 +1433,8 @@ int main(int argc,char **argv){
  	
     // Update pi
     if(piPriorCount){
-      gamma_distribution<double> gammaA(piPrior*piPriorCount+((double) nQTL),1.0);
-      gamma_distribution<double> gammaB((1.-piPrior)*piPriorCount+((double)(nQTLLoci-nQTL)),1.0);
+      gamma_distribution<double> gammaA(piPrior*piPriorCount+((double)(nQTLLoci-nQTL)),1.0);
+      gamma_distribution<double> gammaB((1.-piPrior)*piPriorCount+((double) nQTL),1.0);
       double numPi=gammaA(gen);
       double denPi=numPi+gammaB(gen);
       pi=numPi/denPi;
