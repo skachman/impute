@@ -28,10 +28,12 @@ int main(int argc,char **argv){
   double sig2bPrior=.05,sig2ePrior=5;
   double pi=.99,mu=0,inactiveProposal=0.9;
   double nusig2e=10,nusig2b=4;
-  int deltaSampler=1;
+  int deltaSampler=2;
+  
   int enableSwapActive=0;
   
-MCMCName=baseName+"_MCMCSamples.txt";
+  double piPrior=0.99,piPriorCount=0;
+  MCMCName=baseName+"_MCMCSamples.txt";
   QTLName=baseName+"_QTLResults.txt";
   gHatName=baseName+"_gHatResults.txt";
 
@@ -70,6 +72,9 @@ MCMCName=baseName+"_MCMCSamples.txt";
     config.Get("nusig2b",nusig2b);
     config.Get("sig2bPrior",sig2bPrior);
     config.Get("pi",pi);
+    piPrior=pi;
+    config.Get("piPrior",piPrior);
+    config.Get("piPriorCount",piPriorCount);
     config.Get("mu",mu);
     config.Get("inactiveProposal",inactiveProposal);
     if(config.Get("randomEffects",randomString)){
@@ -143,6 +148,8 @@ MCMCName=baseName+"_MCMCSamples.txt";
     }
   }
   cout << setw(22) << "pi = " << " " << pi << endl;
+  cout << setw(22) << "piPrior = " << " " << piPrior << endl;
+  cout << setw(22) << "piPriorCount = " << " " << piPriorCount << " # 0=Fixed"<< endl;
   cout << setw(22) << "mu = " << " " << mu << endl;
   cout << setw(22) << "inactiveProposal = " << " " << inactiveProposal << endl;
   cout << endl << endl;
@@ -850,7 +857,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
 
   vector<double> yDev(nPheno),gHat(nPheno),gHatSum(nPheno,0.0),gHatSumSq(nPheno,0.0),xVec(nPheno),probClass(nComb);
   double *yDevpt,*gHatpt;
-  MCMCSamples << "Sample\tmu\tsig2b\tsig2e\tsig2g";
+  MCMCSamples << "Sample\tmu\tsig2b\tsig2e\tsig2g\tpi";
   for(int iCl=0;iCl<nClass;iCl++) {
     if(classRandom[iCl] > -1){
       MCMCSamples << "\tsig2_"+className[iCl];
@@ -1421,7 +1428,15 @@ MCMCName=baseName+"_MCMCSamples.txt";
 
     
  	
-
+    // Update pi
+    if(piPriorCount){
+      gamma_distribution<double> gammaA(piPrior*piPriorCount+((double) nQTL),1.0);
+      gamma_distribution<double> gammaB((1.-piPrior)*piPriorCount+((double)(nQTLLoci-nQTL)),1.0);
+      double numPi=gammaA(gen);
+      double denPi=numPi+gammaB(gen);
+      pi=numPi/denPi;
+    }
+    
     
     computeLhsV=0;
     //update mu;
@@ -1641,7 +1656,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
     if((s % printFreq)==0){
       cout << endl;
       cout << "Sample: " << s << endl;
-      cout << setprecision(8) << "Sig2b: " << sig2b << " Sig2e: " << sig2e << " Sig2g: " << sig2g;
+      cout << setprecision(8) << "Pi: " << pi <<" Sig2b: " << sig2b << " Sig2e: " << sig2e << " Sig2g: " << sig2g;
       for(int iCl=0;iCl<nClass;iCl++) {
 	if(classRandom[iCl] > -1){
 	  cout << " Sig2_"+className[iCl]+": " << sig2r[classRandom[iCl]];
@@ -1665,7 +1680,7 @@ MCMCName=baseName+"_MCMCSamples.txt";
       
       cout << endl <<endl;
       if(s%outputFreq==0) {
-	MCMCSamples << s << "\t" << mu+sumg <<"\t" << sig2b << "\t" <<sig2e <<"\t" << sig2g ;
+	MCMCSamples << s << "\t" << mu+sumg <<"\t" << sig2b << "\t" <<sig2e <<"\t" << sig2g << "\t" << pi;
 	for(int iCl=0;iCl<nClass;iCl++) {
 	  if(classRandom[iCl] > -1){
 	    MCMCSamples << "\t" << sig2r[classRandom[iCl]];
