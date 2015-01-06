@@ -1,4 +1,8 @@
 #include "impute.h"
+
+uniform_real_distribution<double> u(0.,1.);
+mt19937 gen;
+
 int main(int argc,char **argv){
   
   string genoName,mapName;

@@ -29,6 +29,8 @@ using namespace std;
 using namespace Eigen;
 
 
+extern uniform_real_distribution<double> u;
+extern mt19937 gen;
 
 
 class regionAnim{
@@ -247,6 +249,9 @@ void  forwardVec(const long start, const long end,hmm &HMM, const vector<int> &X
 void backwardVec(const long start, const long end,hmm &HMM, const vector<int> &X,const vector<double> &picomb,vector< vector<double> > &bVec);
 void calcPComb(int nComb,hmmLoci &HMMlocus,vector<double> &P);
 void calcDeltaProposal(const double sig2e,const double sig2b,const vector<int> &delta,
+			 vector<int> &dVec,vector<double> &rhsV,vector<double> &lhsV,vector<double> &lhsVs,const double pi,const int nDeltaStates,const int nStates,
+			 double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum);
+void calcDeltaProposalSelective(const double sig2e,const double sig2b,const vector<int> &delta,
 			 vector<int> &dVec,vector<double> &rhsV,vector<double> &lhsV,vector<double> &lhsVs,const double pi,const int nDeltaStates,const int nStates,
 			 double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum);
 void calcDeltaProposalFull(const double sig2e,const double sig2b,const vector<int> &delta,vector<vector<int> > &deltaStates,

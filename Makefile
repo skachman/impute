@@ -8,19 +8,23 @@
 MATVECLOC     = matvec
 #CC            = clang 
 #CXX           = clang++ 
-CC            = gcc -fopnemp
-CXX           = g++ -fopenmp -std=c++11
+#CC            = gcc -fopenmp
+#CXX           = g++ -fopenmp -std=c++11
+CC            = icc -fopnemp
+CXX           = icpc -fopenmp -std=c++11
 DEFINES       = 
 CFLAGS        = -pipe -g -Wall -W $(DEFINES)
 #CXXFLAGS      = -pipe -O3 -ftree-vectorize -ftree-vectorizer-verbose=5 -funsafe-math-optimizations -g  -arch x86_64 $(DEFINES) # -Wall -W
-CXXFLAGS      = -pipe -O3 -funsafe-math-optimizations -g  -arch x86_64 $(DEFINES) #
+#CXXFLAGS      = -pipe -O3 -funsafe-math-optimizations -g  -arch x86_64 $(DEFINES) #
+CXXFLAGS      = -pipe -O3  -g  -arch x86_64 $(DEFINES) #
 #CXXFLAGS      = -pipe  -g  -arch x86_64 $(DEFINES) #-Wall -W
 
 INCPATH       =  -I/opt/local/include/eigen3/ -I/opt/local/include -I. -Iinclude
 #LINK          = clang++
-LINK          = g++   -fopenmp
+#LINK          = g++   -fopenmp
+LINK          = icpc   -fopenmp 
 LFLAGS        = -prebind
-LIBS          = $(SUBLIBS) #/opt/local/lib/libmatvec.a 
+LIBS          = $(SUBLIBS)  #/opt/local/lib/libmatvec.a 
 AR            = ar cq
 RANLIB        = ranlib -s
 TAR           = tar -cf
