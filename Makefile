@@ -4,25 +4,38 @@
 #############################################################################
 
 ####### Compiler, tools and options
+#COMPILER=INTEL
+COMPILER=GCC
+#COMPILER=CLANG
+
+DEFINES       = 
 
 MATVECLOC     = matvec
-#CC            = clang 
-#CXX           = clang++ 
-#CC            = gcc -fopenmp
-#CXX           = g++ -fopenmp -std=c++11
+
+ifeq ($(COMPILER),INTEL)
+CXXFLAGS      = -pipe -O3  -g  -arch x86_64 $(DEFINES) #
 CC            = icc -fopnemp
 CXX           = icpc -fopenmp -std=c++11
-DEFINES       = 
+LINK          = icpc   -fopenmp 
+endif
+ifeq ($(COMPILER),GCC)
+CC            = gcc -fopenmp
+CXX           = g++ -fopenmp -std=c++11
+CXXFLAGS      = -pipe -O3 -funsafe-math-optimizations -g  -arch x86_64 $(DEFINES)
+LINK          = g++   -fopenmp
+endif
+ifeq ($(COMPILER),CLANG)
+CC   = clang 
+CXX  = clang++
+LINK          = clang++
+CXXFLAGS = -pipe -O3  -g  -arch x86_64 $(DEFINES) 
+endif
+
+
 CFLAGS        = -pipe -g -Wall -W $(DEFINES)
-#CXXFLAGS      = -pipe -O3 -ftree-vectorize -ftree-vectorizer-verbose=5 -funsafe-math-optimizations -g  -arch x86_64 $(DEFINES) # -Wall -W
-#CXXFLAGS      = -pipe -O3 -funsafe-math-optimizations -g  -arch x86_64 $(DEFINES) #
-CXXFLAGS      = -pipe -O3  -g  -arch x86_64 $(DEFINES) #
-#CXXFLAGS      = -pipe  -g  -arch x86_64 $(DEFINES) #-Wall -W
 
 INCPATH       =  -I/opt/local/include/eigen3/ -I/opt/local/include -I. -Iinclude
-#LINK          = clang++
-#LINK          = g++   -fopenmp
-LINK          = icpc   -fopenmp 
+
 LFLAGS        = -prebind
 LIBS          = $(SUBLIBS)  #/opt/local/lib/libmatvec.a 
 AR            = ar cq
@@ -53,10 +66,10 @@ BINARY_DIR    = ~/bin/
 
 ####### Files
 
-SOURCES       = $(SRC_DIR)impute.cpp  
+SOURCES       =  $(SRC_DIR)BayesIM.cpp  $(SRC_DIR)PullRegions.cpp $(SRC_DIR)Configuration.cpp $(SRC_DIR)utility.cpp 
 
 
-OBJECTS       = $(OBJECTS_DIR)impute.o	
+OBJECTS       = $(OBJECTS_DIR)BayesIM.o $(OBJECTS_DIR)PullRegions.o $(OBJECTS_DIR)Configuration.o $(OBJECTS_DIR)utility.o	
 
 DESTDIR       = 
 
@@ -89,65 +102,25 @@ all: Makefile $(TARGET) bin/BayesIM bin/PullRegions # bin/imputeMCMC bin/BayesIM
 $(TARGET):  $(OBJECTS)  
 	$(LINK) $(LFLAGS) -o $(TARGET) $(OBJECTS) $(OBJCOMP) $(LIBS)
 
-bin/imputeMCMC:   $(OBJECTS_DIR)imputeMCMC.o	 
-	$(LINK) $(LFLAGS) -o bin/imputeMCMC  $(OBJECTS_DIR)imputeMCMC.o $(OBJCOMP) $(LIBS)
-
 bin/BayesIM:   $(OBJECTS_DIR)BayesIM.o	 $(OBJECTS_DIR)Configuration.o	  $(OBJECTS_DIR)utility.o	
 	$(LINK) $(LFLAGS) -o bin/BayesIM  $(OBJECTS_DIR)BayesIM.o $(OBJECTS_DIR)Configuration.o $(OBJECTS_DIR)utility.o $(LIBS)
 
 bin/PullRegions:   $(OBJECTS_DIR)PullRegions.o	 $(OBJECTS_DIR)Configuration.o	  $(OBJECTS_DIR)utility.o	
 	$(LINK) $(LFLAGS) -o bin/PullRegions  $(OBJECTS_DIR)PullRegions.o $(OBJECTS_DIR)Configuration.o $(OBJECTS_DIR)utility.o $(LIBS)
 
-bin/BayesIM-new:   $(OBJECTS_DIR)BayesIM-new.o	 $(OBJECTS_DIR)Configuration.o	 
-	$(LINK) $(LFLAGS) -o bin/BayesIM-new  $(OBJECTS_DIR)BayesIM-new.o $(OBJECTS_DIR)Configuration.o $(OBJCOMP) $(LIBS)
 
-bin/imputeTwoTrait:   $(OBJECTS_DIR)imputeTwoTrait.o
-	$(LINK) $(LFLAGS) -o bin/imputeTwoTrait  $(OBJECTS_DIR)imputeTwoTrait.o $(OBJCO\
-MP) $(LIBS)
+
 
 dist: 
-	@$(CHK_DIR_EXISTS) obj/GenSel1.0.0 || $(MKDIR) obj/GenSel1.0.0 
-	$(COPY_FILE) --parents $(SOURCES) $(DIST) obj/GenSel1.0.0/ && $(COPY_FILE) --parents CMPBayesABC.cpp obj/GenSel1.0.0/ && (cd `dirname obj/GenSel1.0.0` && $(TAR) GenSel1.0.0.tar GenSel1.0.0 && $(COMPRESS) GenSel1.0.0.tar) && $(MOVE) `dirname obj/GenSel1.0.0`/GenSel1.0.0.tar.gz . && $(DEL_FILE) -r obj/GenSel1.0.0
 
 
-clean:compiler_clean 
+
+clean:
 	-$(DEL_FILE) $(OBJECTS)
-	-$(DEL_FILE) *~ core *.core
+	-$(DEL_FILE) bin/BayesIM bin/PullRegions
 
 
-####### Sub-libraries
-
-distclean: clean
-	-$(DEL_FILE) $(TARGET) 
-	-$(DEL_FILE) Makefile
-
-
-mocclean: compiler_moc_header_clean compiler_moc_source_clean
-
-mocables: compiler_moc_header_make_all compiler_moc_source_make_all
-
-compiler_objective_c_make_all:
-compiler_objective_c_clean:
-compiler_moc_header_make_all:
-compiler_moc_header_clean:
-compiler_rcc_make_all:
-compiler_rcc_clean:
-compiler_image_collection_make_all: qmake_image_collection.cpp
-compiler_image_collection_clean:
-	-$(DEL_FILE) qmake_image_collection.cpp
-compiler_moc_source_make_all:
-compiler_moc_source_clean:
-compiler_rez_source_make_all:
-compiler_rez_source_clean:
-compiler_uic_make_all:
-compiler_uic_clean:
-compiler_yacc_decl_make_all:
-compiler_yacc_decl_clean:
-compiler_yacc_impl_make_all:
-compiler_yacc_impl_clean:
-compiler_lex_make_all:
-compiler_lex_clean:
-compiler_clean: 
+ 
 
 ####### Compile
 
@@ -158,8 +131,6 @@ $(OBJECTS_DIR)impute.o: $(SRC_DIR)impute.cpp $(HEADER_DIR)impute.h
 
 $(OBJECTS_DIR)imputeTwoTrait.o: $(SRC_DIR)imputeTwoTrait.cpp $(HEADER_DIR)impute.h
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o $(OBJECTS_DIR)imputeTwoTrait.o $(SRC_DIR)imputeTwoTrait.cpp
-
-
 
 $(OBJECTS_DIR)utility.o: $(SRC_DIR)utility.cpp $(HEADER_DIR)impute.h
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o $(OBJECTS_DIR)utility.o $(SRC_DIR)utility.cpp 

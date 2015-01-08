@@ -1,5 +1,97 @@
 #include "impute.h"
 
+void calcDeltaProposalSelective(const double sig2e,const double sig2b,const vector<int> &delta,
+				vector<int> &dVec,vector<int> &dVecBack,
+				vector<double> &rhsV,vector<double> &lhsV,vector<double> &lhsVs,
+				const double pi,const int nDeltaStates,const int nStates,
+				const double &inactiveProposal,double &logAlphaAA,double &logAlphaIA){
+  
+  
+  vector<int> dsum(2,0);
+  double p0,p1;
+  double logPSum01,logPSum10;
+  double logP01=0,logP10=0;
+  double logMult=log((1.-pi)/pi)-.5*log(sig2b)-log((double) nDeltaStates);
+  dVec=delta;
+  double pCurrent=0,logP=0;
+  for(int I=0;I<nStates;I++) dsum[0]=delta[I];
+  for(int sd=-1;sd<=nStates;sd++){
+    double lhs=sig2e/sig2b;
+    double rhs=0;
+    if(sd != -1) dVec[sd]=1-dVec[sd];
+    int IJ=0;
+    for(int I=0;I<nStates;I++){
+      if(sd==-1) dsum[0]+=dVec[I];
+      if(dVec[I]){
+	rhs+=rhsV[I];
+	lhs+=lhsVs[I];
+      }
+      for(int J=0;J<=I;J++,IJ++){
+	if(dVec[I] && dVec[J]) lhs+=lhsV[IJ];      
+      }
+    }
+    rhs/=sig2e;
+    lhs/=sig2e;
+    double p=exp(0.5*(rhs*rhs/lhs-log(lhs)));
+    
+    if(sd==-1 || u(gen)*(pCurrent+p) < p){
+      if(sd!=-1) logP01+=log(p/(pCurrent+p));
+      pCurrent=p;
+    }
+    else{
+      dVec[sd]=1-dVec[sd]; // Then dVec goes back to what it was
+      logP01+=log(pCurrent/(pCurrent+p));
+    }
+  }
+  for(int I=0;I<nStates;I++) dsum[1]+=dVec[I];
+  p1=pCurrent;
+  logPSum01=log(p1)+logMult-logP01;
+  double logPCurrentBack=0;
+  dVecBack=dVec;
+  for(int sd=-1;sd<=nStates;sd++){
+    double lhs=sig2e/sig2b;
+    double rhs=0,p;
+    if(sd != -1) dVecBack[sd]=1-dVecBack[sd];
+    int IJ=0;
+    for(int I=0;I<nStates;I++){
+      //if(sd==-1) dsum[0]+=dVec[I];
+      if(dVecBack[I]){
+	rhs+=rhsV[I];
+	lhs+=lhsVs[I];
+      }
+      for(int J=0;J<=I;J++,IJ++){
+	if(dVecBack[I] && dVecBack[J]) lhs+=lhsV[IJ];      
+      }
+    }
+    rhs/=sig2e;
+    lhs/=sig2e;
+    p=exp(0.5*(rhs*rhs/lhs-log(lhs)));
+    
+    if(sd==-1 || delta[sd]==dVecBack[sd]){
+      if(sd!=-1) logP10+=log(p/(pCurrent+p));
+      pCurrent=p;
+    }
+    else{
+      dVecBack[sd]=1-dVecBack[sd]; // Then dVecBack goes back to what it was
+      logP10+=log(pCurrent/(pCurrent+p));
+    }
+  }
+  p0=pCurrent;
+  logPSum10=log(p0)+logMult-logP10;
+  double maxLogP=0;
+  if(logPSum10>maxLogP) maxLogP=logPSum10;
+  if(logPSum01>maxLogP) maxLogP=logPSum01;
+  logAlphaAA=log(p1)-log(p0)+logPSum10-logPSum01+log((exp(-maxLogP)+exp(logPSum01-maxLogP))/(exp(-maxLogP)+exp(logPSum10-maxLogP)));
+  logAlphaIA=log(p1)+((double) nStates)*log(2.)+maxLogP-log(exp(-maxLogP)+exp(logPSum10-maxLogP))-log(1.-inactiveProposal)-logP01;
+  
+  
+  
+ 
+}
+
+
+
+
 void calcDeltaProposalFull(const double sig2e,const double sig2b,const vector<int> &delta,vector<vector<int> > &deltaStates,
 			 vector<int> &dVec,vector<double> &rhsV,vector<double> &lhsV,vector<double> &lhsVs,const double pi,const int nDeltaStates,const int nStates,
 			  double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum){

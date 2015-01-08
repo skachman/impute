@@ -254,8 +254,10 @@ void calcDeltaProposal(const double sig2e,const double sig2b,const vector<int> &
 void calcDeltaProposalSelective(const double sig2e,const double sig2b,const vector<int> &delta,
 			 vector<int> &dVec,vector<double> &rhsV,vector<double> &lhsV,vector<double> &lhsVs,const double pi,const int nDeltaStates,const int nStates,
 			 double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum);
-void calcDeltaProposalFull(const double sig2e,const double sig2b,const vector<int> &delta,vector<vector<int> > &deltaStates,
-			 vector<int> &dVec,vector<double> &rhsV,vector<double> &lhsV,vector<double> &lhsVs,const double pi,const int nDeltaStates,const int nStates,
+void calcDeltaProposalFull(const double sig2e,const double sig2b,const vector<int> &delta,
+			   vector<vector<int> > &deltaStates,
+			 vector<int> &dVec,vector<double> &rhsV,vector<double> &lhsV,vector<double> &lhsVs,
+			   const double pi,const int nDeltaStates,const int nStates,
 			 double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum);
 
 int writeX(const string &filename,vector<vector<int> > &X,vector<string > &ID);

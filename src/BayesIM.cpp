@@ -1,10 +1,15 @@
 #include "impute.h"
 #include <limits.h>
 
+
+uniform_real_distribution<double> u(0.,1.);
+mt19937 gen;
+
 int main(int argc,char **argv){
 
-  string genoName,phenoName,mapName,SNPName;
+  string genoName,phenoName,mapName,SNPName,QTLMapName;
   string randomString;
+  bool QTLMap;
   int nRandom=0;
   vector<double> sig2rPrior,sig2r,nusig2r;
   map<string,int> sig2rVar;
@@ -38,13 +43,69 @@ int main(int argc,char **argv){
   gHatName=baseName+"_gHatResults.txt";
 
 
-  Configuration config;
+  int nQTLClasses=0;
+  vector<int> QTLClassVec,QTLClassCount;
+  map<string,int> QTLClasses;
+  string QTLClassStr;
+  vector<double> sig2bPriorVec,sig2bVec,nusig2bVec,piPriorVec,piPriorCountVec,piClassVec;
 
+  
+  Configuration config;
+  string QTLString;
   if(argc>1){
     if(!config.Load(argv[1])) exit(1);
+    
+    config.Get("nusig2b",nusig2b);
+    config.Get("sig2bPrior",sig2bPrior);
+    config.Get("pi",pi);
+    piPrior=pi;
+    config.Get("piPrior",piPrior);
+    config.Get("piPriorCount",piPriorCount);
     config.Get("genoName",genoName);
     config.Get("phenoName",phenoName);
     config.Get("mapName",mapName);
+    QTLMap=config.Get("QTLMapName",QTLMapName);
+    if(config.Get("QTLClasses",QTLString)){
+      int next;
+      
+      while(QTLString.length() && (next=QTLString.find_first_not_of(" \t")) !=string::npos){
+	double val;
+	QTLString=QTLString.substr(next);
+	string label=QTLString,varLabel;
+	int last=QTLString.find_first_of(" \t");
+	if(last != string::npos) label=QTLString.substr(0,last);
+	QTLClasses[label]=nQTLClasses;
+	QTLClassCount.push_back(0);
+	if(!config.Get("QTLnu_"+label,val)) val=nusig2b;
+	nusig2bVec.push_back(val);
+	if(!config.Get("sig2bPrior_"+label,val)) val=sig2bPrior;
+	sig2bPriorVec.push_back(val);
+	sig2bVec.push_back(val);
+	if(!config.Get("piPrior_"+label,val)) val=piPrior;
+	piPriorVec.push_back(val);
+	if(!config.Get("piPriorCount_"+label,val)) val=piPriorCount;
+	piPriorCountVec.push_back(val);
+	piClassVec.push_back(pi);
+	nQTLClasses++;
+
+    if(last != string::npos){
+      QTLString=QTLString.substr(last);
+    }
+    else QTLString="";
+      }
+    }
+    if(!QTLMap){
+      QTLClasses[""]=nQTLClasses;
+	QTLClassCount.push_back(0);
+	nusig2bVec.push_back(nusig2b);
+	sig2bPriorVec.push_back(sig2bPrior);
+	sig2bVec.push_back(sig2bPrior);
+	piPriorVec.push_back(piPrior);
+	piPriorCountVec.push_back(piPriorCount);
+	piClassVec.push_back(pi);
+	nQTLClasses++;
+    }
+    
     config.Get("freqQTLKb",freqQTLKb);
     config.Get("nStates",nStates);
     config.Get("lambdaKb",lambdaKb);
@@ -69,12 +130,6 @@ int main(int argc,char **argv){
     config.Get("windowSize",windowSize); //Not Used
     config.Get("nusig2e",nusig2e);
     config.Get("sig2ePrior",sig2ePrior);
-    config.Get("nusig2b",nusig2b);
-    config.Get("sig2bPrior",sig2bPrior);
-    config.Get("pi",pi);
-    piPrior=pi;
-    config.Get("piPrior",piPrior);
-    config.Get("piPriorCount",piPriorCount);
     config.Get("mu",mu);
     config.Get("inactiveProposal",inactiveProposal);
     if(config.Get("randomEffects",randomString)){
@@ -111,6 +166,23 @@ int main(int argc,char **argv){
   cout << setw(22) << "genoName = " << " " << genoName << endl;
   cout << setw(22) << "phenoName = " << " " << phenoName << endl;
   cout << setw(22) << "mapName = " << " " << mapName << endl;
+  if(QTLMap) {
+    cout << setw(22) << "QTLMapName = " << " " << QTLMapName << endl;
+    cout << setw(22) << "QTLClasses =" ;
+    for (auto it=QTLClasses.begin(); it!=QTLClasses.end(); ++it){ 
+      cout <<" " << it->first; 
+    }
+    cout << endl;
+    for (auto it=QTLClasses.begin(); it!=QTLClasses.end(); ++it){
+      string label=it->first;
+      int c=it->second;
+      cout << setw(22) << "QTLnu_"+label+" = "  << " " << nusig2bVec[c] << endl; 
+      cout << setw(22) << "sig2bPrior_"+label+" = "  << " " << sig2bPriorVec[c] << endl; 
+      cout << setw(22) << "piPrior_"+label+" = "  << " " << piPriorVec[c] << endl; 
+      cout << setw(22) << "piPriorCount_"+label+" = "  << " " << piPriorVec[c] << endl; 
+    }
+  }
+  
   cout << setw(22) << "freqQTLKb = " << " " << freqQTLKb << endl;
   cout << setw(22) << "nStates = " << " " << nStates << endl;
   cout << setw(22) << "lambdaKb = " << " " << lambdaKb << endl;
@@ -138,8 +210,8 @@ int main(int argc,char **argv){
     cout << setw(22) << "randomEffects =" ;
     for (std::map<string,int>::iterator it=sig2rVar.begin(); it!=sig2rVar.end(); ++it){ 
       cout <<" " << it->first; 
-      cout << endl;
     }
+    cout << endl;
     for (std::map<string,int>::iterator it=sig2rVar.begin(); it!=sig2rVar.end(); ++it){
       string label=it->first;
       int rEffect=it->second;
@@ -158,13 +230,13 @@ int main(int argc,char **argv){
   //cout << "Maximum value for long: " << numeric_limits<long>::max() << '\n';
 
   //matvec::UniformDist u;
-  uniform_real_distribution<double> u(0.,1.);
+  //uniform_real_distribution<double> u(0.,1.);
   //matvec::NormalDist Z;
   normal_distribution<double> Z(0.,1.);
   idmap seqMap,phenMap;
   idmap::iterator seqMapIt,phenMapIt;
 
-  ifstream Geno,Pheno,MapFile;
+  ifstream Geno,Pheno,MapFile,QTLMapFile;
   ofstream MCMCSamples,QTLResults,gHatResults,snpResults;
   string filename;
   string line,id;
@@ -180,8 +252,8 @@ int main(int argc,char **argv){
   string sVal;
   unsigned seed=3434241;
   random_device rd;
-  mt19937 gen(rd());
-
+  //mt19937 gen;
+  gen.seed(rd());
   //if(0) gen(seed);
   /*
     DIR *dirPtr = opendir("matvec_trash");
@@ -738,22 +810,57 @@ int main(int argc,char **argv){
   }
     // Add QTL loci;
     int q=0;
-  int nQTLLoci;
+  int nQTLLoci=0;
   int nSNPLoci=nLoci;
-
-
-  for(int chr=0;chr<nChrom;chr++)  HMM.loci[chromStart[chr]].newChrom=0;
-  for(int chr=0;chr<nChrom;chr++){
-    aMapLocus.chrom=Chrom[chr];
-    //cout << "qpos "<< chromStart[chr] << " "  << lociMap[chromStart[chr]].pos+1 << " " << lociMap[chromStart[chr+1]-1].pos << endl;
-    for(long qPos=lociMap[chromStart[chr]].pos+1;qPos<lociMap[chromStart[chr+1]-1].pos;qPos+=freqQTL,q++){
-      aMapLocus.name="QTL_" + to_string(Chrom[chr]) + "_" + to_string(qPos);
-      aMapLocus.pos=qPos;
+  
+  if(QTLMap){
+    QTLMapFile.open(QTLMapName);
+    if(QTLMapFile.fail()) {
+      cout << "Failed to open QTL map file " + QTLMapName << endl;
+      exit(101);
+    }
+    getline(QTLMapFile,line);
+    while(getline(QTLMapFile,line)){
+      stringstream linestr(line);
+      linestr >> aMapLocus.name;
+      linestr >> aMapLocus.chrom;
+      linestr >> aMapLocus.pos;
+      linestr >> QTLClassStr;
+      
       aMapLocus.isSNP=-1;
-      aMapLocus.isQTL=q;
-      nQTLLoci=q+1;
+      aMapLocus.isQTL=nQTLLoci++;
+      if(QTLClasses.find(QTLClassStr)!=QTLClasses.end()){
+	iVal=QTLClasses[QTLClassStr];
+      }
+      else{
+	cout << "Couldn't find " + QTLClassStr + " in QTLClasses = " << endl;
+	exit(312);
+      }
       lociMap.push_back(aMapLocus);
-      //if(q< 100) cout << q <<" " << aMapLocus.name << endl;
+      QTLClassVec.push_back(iVal);
+      QTLClassCount[iVal]++;
+    }
+    cout << "Read in QTL map file" << endl << endl;;
+  }
+  else{
+    nQTLClasses=1;
+    QTLClasses[""]=0;
+    QTLClassCount.push_back(0);
+    for(int chr=0;chr<nChrom;chr++)  HMM.loci[chromStart[chr]].newChrom=0;
+    for(int chr=0;chr<nChrom;chr++){
+      aMapLocus.chrom=Chrom[chr];
+      //cout << "qpos "<< chromStart[chr] << " "  << lociMap[chromStart[chr]].pos+1 << " " << lociMap[chromStart[chr+1]-1].pos << endl;
+      for(long qPos=lociMap[chromStart[chr]].pos+1;qPos<lociMap[chromStart[chr+1]-1].pos;qPos+=freqQTL,q++){
+	aMapLocus.name="QTL_" + to_string(Chrom[chr]) + "_" + to_string(qPos);
+	aMapLocus.pos=qPos;
+	aMapLocus.isSNP=-1;
+	aMapLocus.isQTL=q;
+	nQTLLoci=q+1;
+	lociMap.push_back(aMapLocus);
+	QTLClassVec.push_back(0);
+	QTLClassCount[0]++;
+	//if(q< 100) cout << q <<" " << aMapLocus.name << endl;
+      }
     }
   }
   
@@ -777,8 +884,11 @@ int main(int argc,char **argv){
 
   HMM.resize(nLoci);
   for(int chr=0;chr<nChrom;chr++) {
+    for(int i=chromStart[chr];i<chromStart[chr+1];i++) {
+      HMM.loci[i].pos=lociMap[i].pos;
+      HMM.loci[i].newChrom=0;
+    }
     HMM.loci[chromStart[chr]].newChrom=1;
-      for(int i=chromStart[chr];i<chromStart[chr+1];i++) HMM.loci[i].pos=lociMap[i].pos;
   }
 
   for(int chr=0;chr<nChrom;chr++){
@@ -821,7 +931,7 @@ int main(int argc,char **argv){
   // MCMC
   //
 
-
+  
   MCMCSamples.open(MCMCName);
   QTLResults.open(QTLName);
   gHatResults.open(gHatName);
@@ -842,6 +952,11 @@ int main(int argc,char **argv){
   vector<int> windowSumVec,windowVec;
   vector<long> activeLoci;
   long activePos=0;
+
+  //vector<double> piVec(nQTLClasses,pi);
+  //vector<double> sig2bVec(nQTLClassses,sig2b);
+  vector<int> nQTLVec(nQTLClasses);
+  
   uSmp=u(gen);
 
   qtlVec.resize(nQTLLoci);
@@ -1059,7 +1174,12 @@ int main(int argc,char **argv){
 
 
 
-    double ssb=scaleB,sse=scaleRes,ssg=0;
+    //double ssb=scaleB;
+    double sse=scaleRes,ssg=0;
+    vector<double> ssbVec(nQTLClasses);
+    for(int c=0;c<nQTLClasses;c++){
+      ssbVec[c]=sig2bPriorVec[c]*(nusig2bVec[c]-2.);
+    }
     
     nQTL=activeLoci.size();
     yDev=y;
@@ -1092,7 +1212,7 @@ int main(int argc,char **argv){
     activeLoci.resize(0);
     int nRejectI2A=0;
     int nRejectA2I=0;
-
+    nQTLVec.assign(nQTLClasses,0);
     for(long i=0;i<nQTLLoci;i++){
 
       
@@ -1159,7 +1279,7 @@ int main(int argc,char **argv){
       int nowActive=0;
       int proposeActive=0;
       
-      double logAoverI=log((1.-pi)/pi);
+      //double logAoverI=log((1.-pi)/pi);
       double b=qtlVec[i].b;
       
       rhsV.assign(nStates,0.0);
@@ -1243,13 +1363,13 @@ int main(int argc,char **argv){
 	double maxAoverIP=0.;
 	int SD=0;
 	if(!active) qtlVec[i].delta=deltaZero;
-	
+	int QTLClass=QTLClassVec[i];
 	switch(deltaSampler){
 	case 3:
 	case 1:
 	  
-	  calcDeltaProposalFull(sig2e,sig2b,qtlVec[i].delta,deltaStates,
-				dVec,rhsV,lhsV,lhsVs,pi,nDeltaStates,nStates,
+	  calcDeltaProposalFull(sig2e,sig2bVec[QTLClass],qtlVec[i].delta,deltaStates,
+				dVec,rhsV,lhsV,lhsVs,piClassVec[QTLClass],nDeltaStates,nStates,
 				pInactive,maxAoverI,AoverIVec,psum);
 	  
 	  ptot=psum;
@@ -1286,8 +1406,13 @@ int main(int argc,char **argv){
 	  if(!active) {
 	    qtlVec[i].delta=deltaStates[uDelta(gen)];
 	  }
-	  calcDeltaProposal(sig2e,sig2b,qtlVec[i].delta,
-			    dVec,rhsV,lhsV,lhsVs,pi,nDeltaStates,nStates,
+	  if(0){  
+	    cout << QTLClass << endl;
+	    cout << sig2bVec[QTLClass] << endl;
+	    cout << piClassVec[QTLClass] << endl;
+	  }
+	  calcDeltaProposal(sig2e,sig2bVec[QTLClass],qtlVec[i].delta,
+			    dVec,rhsV,lhsV,lhsVs,piClassVec[QTLClass],nDeltaStates,nStates,
 			    pInactive,maxAoverI,AoverIVec,psum);
 	  
 	 
@@ -1314,8 +1439,8 @@ int main(int argc,char **argv){
 	  }
 	  
 	  
-	  calcDeltaProposal(sig2e,sig2b,deltaBase,
-			    dVec,rhsV,lhsV,lhsVs,pi,nDeltaStates,nStates,
+	  calcDeltaProposal(sig2e,sig2bVec[QTLClass],deltaBase,
+			    dVec,rhsV,lhsV,lhsVs,piClassVec[QTLClass],nDeltaStates,nStates,
 			    pInactiveP,maxAoverIP,AoverIVecP,psumP);
 	  ptotP=psumP;
 	  if(proposeActive)ptotP+=pInactiveP;
@@ -1367,7 +1492,7 @@ int main(int argc,char **argv){
 	    dVec=qtlVec[i].delta;
 	    double sumXY,sumXX;
 	    sumXY=0;
-	    sumXX=sig2e/sig2b;
+	    sumXX=sig2e/sig2bVec[QTLClass];
 	    int IJ=0;
 	    for(int I=0;I<nStates;I++){
 	      if(dVec[I]) {
@@ -1383,7 +1508,8 @@ int main(int argc,char **argv){
 	    //sample b
 	    
 	    qtlVec[i].b=b;
-	    ssb+=b*b;
+	    ssbVec[QTLClass]+=b*b;
+	    nQTLVec[QTLClass]++;
 	    yDevpt=yDev.data();
             gHatpt=gHat.data();
 	    //#pragma omp parallel for schedule(static)
@@ -1432,12 +1558,14 @@ int main(int argc,char **argv){
     
  	
     // Update pi
-    if(piPriorCount){
-      gamma_distribution<double> gammaA(piPrior*piPriorCount+((double)(nQTLLoci-nQTL)),1.0);
-      gamma_distribution<double> gammaB((1.-piPrior)*piPriorCount+((double) nQTL),1.0);
-      double numPi=gammaA(gen);
-      double denPi=numPi+gammaB(gen);
-      pi=numPi/denPi;
+    for(int c=0;c<nQTLClasses;c++){
+      if(piPriorCountVec[c] ){
+	gamma_distribution<double> gammaA(piPriorVec[c]*piPriorCountVec[c]+((double)(nQTLLoci-nQTLVec[c])),1.0);
+	gamma_distribution<double> gammaB((1.-piPriorVec[c])*piPriorCountVec[c]+((double) nQTLVec[c]),1.0);
+	double numPi=gammaA(gen);
+	double denPi=numPi+gammaB(gen);
+	piClassVec[c]=numPi/denPi;
+      }
     }
     
     
@@ -1499,10 +1627,12 @@ int main(int argc,char **argv){
 	for(int l=0;l<nLevels[iCl];l++)  {
 	  ssr+=betaClass[iCl][l]*betaClass[iCl][l];
 	}
-	double X2;
-	gamma_distribution<double> sig2rGamma(nuTilde/2.0,1.);
-	X2=2.*sig2rGamma(gen); //Chi-square;
-	sig2r[iR]=ssr/X2;
+	//	double X2;
+	//	gamma_distribution<double> sig2rGamma(nuTilde/2.0,1.);
+	//	X2=2.*sig2rGamma(gen); //Chi-square;
+	//	sig2r[iR]=ssr/X2;
+	gamma_distribution<double> sig2rGamma(nuTilde/2.0,2./ssr);
+	sig2r[iR]=1./sig2rGamma(gen);
 	//	cout << "ssr " << ssr << " iR " <<  iR << " Scale " << sig2rPrior[iR]*(nusig2r[iR]-2.) << " nuTilde " << nuTilde << endl;
       }
     }
@@ -1516,19 +1646,24 @@ int main(int argc,char **argv){
     sse+=ssePart;
     
 
-    double X2;
-    gamma_distribution<double> sig2eGamma(nuTilde/2.0,1.);
-    X2=2.*sig2eGamma(gen); //Chi-square;
-   
-    sig2e=sse/X2;
+    //    double X2;
+    //    gamma_distribution<double> sig2eGamma(nuTilde/2.0,1.);
+    //    X2=2.*sig2eGamma(gen); //Chi-square;
+    //    sig2e=sse/X2;
+    gamma_distribution<double> sig2eGamma(nuTilde/2.0,2./sse);
+    sig2e=1./sig2eGamma(gen);
     //cout << "Sig2E " << sse << " " << nuTilde << " " << X2 << " " << sig2e << endl; 
 
     //update sig2b;
-    nQTL=activeLoci.size();
-    nuTilde=((double) nQTL)+nusig2b;
-    gamma_distribution<double> sig2bGamma(nuTilde/2.0,1.);
-    X2=2.*sig2bGamma(gen); //Chi-square;
-    sig2b=ssb/X2;
+    for(int c=0;c<nQTLClasses;c++){
+      //nQTL=activeLoci.size();
+      nuTilde=((double) nQTLVec[c])+nusig2bVec[c];
+      //    gamma_distribution<double> sig2bGamma(nuTilde/2.0,1.);
+      //    X2=2.*sig2bGamma(gen); //Chi-square;
+      //    sig2b=ssb/X2;
+      gamma_distribution<double> sig2bGamma(nuTilde/2.0,2./ssbVec[c]);
+      sig2bVec[c]=1./sig2bGamma(gen);
+    }
     if(s>=nBurnIn){
       windowVec.assign(nQTLLoci,0);
       for(int i=0;i<nQTLLoci;i++){
@@ -1546,7 +1681,8 @@ int main(int argc,char **argv){
       
       
       for(long i=(s%1);i<(nQTLLoci-1);i+=2){
-	
+	int QTLClass=QTLClassVec[i];
+	int QTLClass1=QTLClassVec[i+1];
 	if(qtlVec[i].active != qtlVec[i+1].active){
 	  int a0=qtlVec[i].active;
 	  int a1=qtlVec[i+1].active;
@@ -1559,7 +1695,7 @@ int main(int argc,char **argv){
 	    dVec=qtlVec[i+1].delta;
 	    b=qtlVec[i+1].b;
 	  }
-	  double rhs=0.,rhs1=0.,lhs=sig2e/sig2b,lhs1=sig2e/sig2b,ssSw=0.;
+	  double rhs=0.,rhs1=0.,lhs=sig2e/sig2bVec[QTLClass],lhs1=sig2e/sig2bVec[QTLClass1],ssSw=0.;
 	  for(int a=0;a<nPheno;a++){
 	    int seqClass=XHaplo[i][a];
 	    int seq1Class=XHaplo[i+1][a];
@@ -1589,7 +1725,7 @@ int main(int argc,char **argv){
 	  lhs/=sig2e;
 	  lhs1/=sig2e;
 	  //double probSw=exp(-0.5*ssSw/sig2e);
-	  double prob0=exp(0.5*(rhs*rhs/lhs-rhs1*rhs1/lhs1))*sqrt(lhs1/lhs);
+	  double prob0=exp(0.5*(rhs*rhs/lhs-rhs1*rhs1/lhs1))*sqrt(lhs1/lhs)*(piClassVec[QTLClass]/piClassVec[QTLClass1]);
 	  
 	  if(u(gen) < prob0/(1.+prob0)){
 	    a0=1;
@@ -1659,7 +1795,17 @@ int main(int argc,char **argv){
     if((s % printFreq)==0){
       cout << endl;
       cout << "Sample: " << s << endl;
-      cout << setprecision(8) << "Pi: " << pi <<" Sig2b: " << sig2b << " Sig2e: " << sig2e << " Sig2g: " << sig2g;
+      if(QTLMap){
+	for(auto it=QTLClasses.begin();it !=QTLClasses.end();it++){
+	  int c=it->second;
+	  cout << setw(10) << it->first << " ";
+	  cout << it->first << " " << setprecision(8) << "Pi: " << piClassVec[c] <<" Sig2b: " << sig2bVec[c] << endl;
+	}
+	cout << setprecision(8) << " Sig2e: " << sig2e << " Sig2g: " << sig2g;
+      }
+      else{
+	cout << setprecision(8) << "Pi: " << piClassVec[0] <<" Sig2b: " << sig2bVec[0] << " Sig2e: " << sig2e << " Sig2g: " << sig2g;
+      }
       for(int iCl=0;iCl<nClass;iCl++) {
 	if(classRandom[iCl] > -1){
 	  cout << " Sig2_"+className[iCl]+": " << sig2r[classRandom[iCl]];
@@ -1727,5 +1873,4 @@ int main(int argc,char **argv){
     gHatResults << phenID[a] << "\t" << gHatSum[a]/numSampled << "\t" <<  (gHatSumSq[a]-gHatSum[a]*gHatSum[a]/numSampled)/numSampled << endl;
   }
 }
-
 
