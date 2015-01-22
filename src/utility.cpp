@@ -1,5 +1,144 @@
 #include "impute.h"
 
+
+void calcDeltaProposalFullX(const MatrixXd &sig2e,const MatrixXd &sig2b,const MatrixXd &Rinv,const MatrixXd &Binv,const vector<int> &delta,vector<vector<int> > &deltaStates,
+			    vector<int> &dVec,vector<VectorXd> &rhsV,vector<double> &lhsV,vector<double> &lhsVs,const double pi, const double rho,const int nDeltaStates,const int nStates,
+			  double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum){
+  
+  //vector<int> dsum(nDeltaStates,0);
+  int nTraits=sig2e.rows();
+  double logDetRinv=log(Rinv.determinant());
+  MatrixXd LHS(MatrixXd::Zero(nTraits,nTraits));
+  AoverIVec.assign(nDeltaStates*(nTraits+1),log((1.-pi)/pi)-log((double) nDeltaStates)+.5*log(Binv.determinant()));
+  int sdt=0;
+  for(int sd=0;sd<nDeltaStates;sd++){
+ 
+  maxAoverI=0.;
+  //dsum.assign(nDeltaStates,0);
+  sdt=0;
+  for(int sd=0;sd<nDeltaStates;sd++){
+    double lhs=0;
+    VectorXd rhs(VectorXd::Zero(nTraits));
+    dVec=deltaStates[sd];
+    //if(sd != nStates) dVec[sd]=1-dVec[sd];
+    int IJ=0;
+    for(int I=0;I<nStates;I++){
+      //dsum[sd]+=dVec[I];
+      if(dVec[I]){
+	rhs+=rhsV[I];
+	lhs+=lhsVs[I];
+      }
+      for(int J=0;J<=I;J++,IJ++){
+	if(dVec[I] && dVec[J]) lhs+=lhsV[IJ];      
+      }
+    }
+
+  
+    for(int t=0;t<nTraits;t++){
+      LHS.setZero();
+      LHS(t,t)=lhs*Rinv(t,t);
+      LHS+=Binv;
+      AoverIVec[sdt]+=0.5*(rhs.dot(LHS.llt().solve(rhs))-log(LHS.determinant()))+log((1.-rho)/((double) nTraits));
+      if(AoverIVec[sdt]> maxAoverI) {
+	maxAoverI=AoverIVec[sdt];
+      }
+      sdt++;
+    }
+    LHS=Rinv*lhs+Binv;
+    AoverIVec[sdt]+=0.5*(rhs.dot(LHS.llt().solve(rhs))-log(LHS.determinant()))+log(rho);
+    if(AoverIVec[sdt]> maxAoverI) {
+      maxAoverI=AoverIVec[sdt];
+    }
+    sdt++;
+    
+  }
+  
+  psum=0;
+  for(sdt=0;sdt<nDeltaStates*(nTraits+1);sdt++){
+    AoverIVec[sdt]=exp(AoverIVec[sdt]-maxAoverI);
+    psum+=AoverIVec[sdt];
+  }
+  
+  pInactive=exp(-maxAoverI);
+  }
+}
+
+void calcDeltaProposalX(const MatrixXd sig2e,const MatrixXd sig2b,const MatrixXd &Rinv,const MatrixXd &Binv,const vector<int> &delta,
+			vector<int> &dVec,vector<VectorXd> &rhsV,vector<double> &lhsV,vector<double> &lhsVs,const double pi,const double rho,const int nDeltaStates,const int nStates,
+			 double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum){
+  
+  int nTraits=sig2e.rows();
+  double logDetRinv=log(Rinv.determinant());
+  
+  MatrixXd LHS(MatrixXd::Zero(nTraits,nTraits));
+  vector<int> dsum(nStates+1,0);
+  AoverIVec.assign(nStates+1,log((1.-pi)/pi)-log((double) nDeltaStates)+log(Binv.determinant())); int sdt=0;
+  /*for(int sd=0;sd<=nStates;sd++){
+    for(int t=0;t<nTraits;t++){
+      AoverIVec[sdt++]-=.5*log(sig2b(t,t));
+    }
+    AoverIVec[sdt++]-=.5*log(sig2b.determinant());
+    }*/
+  maxAoverI=0.;
+  dsum.assign(nStates+1,0);
+  
+  sdt=0;
+  for(int sd=0;sd<=nStates;sd++){
+    double lhs=0;
+    VectorXd rhs(VectorXd::Zero(nTraits,nTraits));
+    dVec=delta;
+    if(sd != nStates) dVec[sd]=1-dVec[sd];
+    int IJ=0;
+    for(int I=0;I<nStates;I++){
+      dsum[sd]+=dVec[I];
+      if(dVec[I]){
+	rhs+=rhsV[I];
+	lhs+=lhsVs[I];
+      }
+      for(int J=0;J<=I;J++,IJ++){
+	if(dVec[I] && dVec[J]) lhs+=lhsV[IJ];      
+      }
+    }
+
+      for(int t=0;t<nTraits;t++){
+      LHS.setZero();
+      LHS(t,t)=lhs*Rinv(t,t);
+      LHS+=Binv;
+      AoverIVec[sdt]+=0.5*(rhs.dot(LHS.llt().solve(rhs))-log(LHS.determinant()))+log((1.-rho)/((double) nTraits));
+      if(AoverIVec[sdt]> maxAoverI) {
+	maxAoverI=AoverIVec[sdt];
+      }
+      sdt++;
+    }
+    LHS=Rinv*lhs+Binv;
+    AoverIVec[sdt]+=0.5*(rhs.dot(LHS.llt().solve(rhs))-log(LHS.determinant()))+log(rho);
+    if(AoverIVec[sdt]> maxAoverI) {
+      maxAoverI=AoverIVec[sdt];
+    }
+    sdt++;
+  
+  }
+  
+  psum=0;
+  sdt=0;
+  for(int sd=0;sd<=nStates;sd++){
+    for(int t=0;t<=nTraits;t++){
+      AoverIVec[sdt]=exp(AoverIVec[sdt]-maxAoverI);
+      if(dsum[sd]==0 || dsum[sd]==nStates) AoverIVec[sdt]=0;
+      psum+=AoverIVec[sdt];
+      sdt++;
+    }
+  }
+  
+  pInactive=0.;
+  //if(dsum[nStates]==1) pInactive=exp(-maxAoverI);
+  pInactive=exp(-maxAoverI)*((double) (nStates+1))/((double) nDeltaStates+2);
+}
+
+
+
+
+
 void calcDeltaProposalSelective(const double sig2e,const double sig2b,const vector<int> &delta,
 				vector<int> &dVec,vector<int> &dVecBack,
 				vector<double> &rhsV,vector<double> &lhsV,vector<double> &lhsVs,
@@ -11,7 +150,7 @@ void calcDeltaProposalSelective(const double sig2e,const double sig2b,const vect
   double p0,p1;
   double logPSum01,logPSum10;
   double logP01=0,logP10=0;
-  double logMult=log((1.-pi)/pi)-.5*log(sig2b)-log((double) nDeltaStates);
+  double logMult=log((1.-pi)/pi)-log((double) nDeltaStates-.5*log(sig2b));
   dVec=delta;
   double pCurrent=0,logP=0;
   for(int I=0;I<nStates;I++) dsum[0]=delta[I];
@@ -97,7 +236,7 @@ void calcDeltaProposalFull(const double sig2e,const double sig2b,const vector<in
 			  double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum){
   
   //vector<int> dsum(nDeltaStates,0);
-  AoverIVec.assign(nDeltaStates,log((1.-pi)/pi)-.5*log(sig2b)-log((double) nDeltaStates));
+  AoverIVec.assign(nDeltaStates,log((1.-pi)/pi)-log((double) nDeltaStates)-.5*log(sig2b));
   maxAoverI=0.;
   //dsum.assign(nDeltaStates,0);
   for(int sd=0;sd<nDeltaStates;sd++){
@@ -139,7 +278,7 @@ void calcDeltaProposal(const double sig2e,const double sig2b,const vector<int> &
 			 double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum){
   
   vector<int> dsum(nStates+1,0);
-  AoverIVec.assign(nStates+1,log((1.-pi)/pi)-.5*log(sig2b)-log((double) nDeltaStates));
+  AoverIVec.assign(nStates+1,log((1.-pi)/pi)-log((double) nDeltaStates)-.5*log(sig2b));
   maxAoverI=0.;
   dsum.assign(nStates+1,0);
   for(int sd=0;sd<=nStates;sd++){
@@ -198,6 +337,7 @@ void qtlLocus::updateSum(const qtlLocus &A){
   }
 }
 
+
 void qtlLocus::init(int ns){
   b=0;
   delta.assign(ns,0);
@@ -220,6 +360,84 @@ void qtlLocus::init(int ns,double sig2b,double pi){
     for(int i=0;i<ns;i++) {
       if(u(gen) < .5) delta[i]=1;
     }
+  }
+}
+
+
+void qtlXLocus::init(int ns,int nt){
+  activeTrait.assign(nt,0);
+  b.resize(nt);
+  b.setZero();
+  delta.assign(ns,0);
+  t=nt;
+  active=0;
+
+}
+void qtlXLocusSum::init(int ns,int nt){
+  activeTrait.assign(nt,0);
+  b.resize(nt);
+  b.setZero();
+  for(int l=0;l<nt;l++) delta[l].assign(ns,0);
+  t=nt;
+  active=0;
+
+}
+
+
+void qtlXLocusSum::updateSum(const qtlXLocus &A){
+  
+  if(A.active){
+    active++;
+    for(int l=0;l<t;l++){
+      if(A.activeTrait[l]){
+	activeTrait[l]++;
+	if(A.b[l] >0){
+	  b[l]+=A.b[l];
+	  for(int i=0;i<A.delta.size();i++){
+	    delta[l][i]+=A.delta[i];
+	  }
+	}
+	else{
+	  b[l]-=A.b[l];
+	  for(int i=0;i<A.delta.size();i++){
+	    delta[l][i]+=1-A.delta[i];
+	  }
+	}
+      }
+    }
+  }
+}
+
+void qtlXLocus::init(int ns,int nt,MatrixXd &bL,double pi,double rho){
+  
+  activeTrait.assign(nt,0);
+  b.resize(nt);
+  b.setZero();
+  delta.assign(ns,0);
+  active=0;
+  t=0;
+  if(u(gen)>pi) {
+    active=1;
+    double val;
+    for(int j=0;j<nt;j++){
+      val=Z(gen);
+      for(int i=j;i<nt;i++){
+	b[i]+=bL(i,j)*val;
+      }
+    }
+    for(int i=0;i<ns;i++) {
+      if(u(gen) < .5) delta[i]=1;
+    }
+    if(u(gen) < rho) {
+      t=nt;
+      for(int i=0;i<nt;i++) activeTrait[i]=1;
+    }
+    else{
+      t=nt*u(gen);
+      activeTrait[t]=1;
+    }
+    
+    
   }
 }
 
@@ -705,4 +923,60 @@ void backwardVec(const long start, const long end,hmm &HMM, const vector<int> &X
     }
   }
   
+}
+
+
+void rWishartX(const MatrixXd &Sigma, const double n,MatrixXd &SL,MatrixXd &S){
+  int p=Sigma.rows();
+  MatrixXd A = Sigma.llt().matrixL();
+  MatrixXd L(MatrixXd::Zero(p,p));
+  double alpha=n/2.;
+  for(int i=0;i<p;i++){
+    for(int j=0;j<i;j++){
+      L(i,j)=Z(gen);
+    }
+    gamma_distribution<double> X2(alpha,2.);
+    L(i,i)=sqrt(X2(gen));
+    alpha-=0.5;
+  }
+  SL=A*L;
+  S=SL*SL.transpose();
+}
+
+void rWishartX(const MatrixXd &Sigma, const double n,MatrixXd &S){
+  int p=Sigma.rows();
+  MatrixXd A = Sigma.llt().matrixL();
+  MatrixXd L(MatrixXd::Zero(p,p));
+  double alpha=n/2.;
+  for(int i=0;i<p;i++){
+    for(int j=0;j<i;j++){
+      L(i,j)=Z(gen);
+    }
+    gamma_distribution<double> X2(alpha,2.);
+    L(i,i)=sqrt(X2(gen));
+    alpha-=0.5;
+  }
+  MatrixXd SL=A*L;
+  S=SL*SL.transpose();
+}
+
+
+
+void Zvec(VectorXd &zVec,const int n){
+  if(n){
+    zVec.resize(n);
+  }
+  int N=zVec.size();
+  for(int i=0;i<N;i++) zVec(i)=Z(gen); 
+}
+
+
+void printLower(ostream &out,const MatrixXd & A,const string sep){
+  for(int i=0;i<A.rows();i++)
+    for(int j=0;j<=i;j++)
+      out << sep << A(i,j);
+}
+void printVector(ostream &out,const VectorXd & A,const string sep){
+  for(int i=0;i<A.size();i++)
+      out << sep << A[i];
 }

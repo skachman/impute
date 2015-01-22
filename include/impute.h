@@ -30,6 +30,8 @@ using namespace Eigen;
 
 
 extern uniform_real_distribution<double> u;
+extern normal_distribution<double> Z;
+
 extern mt19937 gen;
 
 
@@ -86,16 +88,29 @@ class qtlResultLocus{
 
 };
 
-class qtl2Locus{
+class qtlXLocus{
  public:
-  Vector2d b;
+  VectorXd b;
   vector<int> delta;
   int active;
+  int t;
   vector<int> activeTrait;
   list<long> *activePos;
-  void init(int nc,Matrix2d bL,double pi,double rho);
-  void init(int nc);
-  void updateSum(const qtl2Locus &A);
+  void init(int nc,int nt,MatrixXd &bL,double pi,double rho);
+  void init(int nc,int nt);
+  //void updateSum(const qtlXLocus &A);
+};
+class qtlXLocusSum{
+ public:
+  VectorXd b;
+  vector<vector<int> > delta;
+  int active;
+  int t;
+  vector<int> activeTrait;
+  list<long> *activePos;
+  //void init(int nc,int nt,MatrixXd &bL,double pi,double rho);
+  void init(int nc,int nt);
+  void updateSum(const qtlXLocus &A);
 };
 
 class haploLocus{
@@ -260,5 +275,19 @@ void calcDeltaProposalFull(const double sig2e,const double sig2b,const vector<in
 			   const double pi,const int nDeltaStates,const int nStates,
 			 double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum);
 
+
+void calcDeltaProposalFullX(const MatrixXd &sig2e,const MatrixXd &sig2b,const MatrixXd &Rinv,const MatrixXd &Binv,const vector<int> &delta,vector<vector<int> > &deltaStates,
+			    vector<int> &dVec,vector<VectorXd> &rhsV,vector<double> &lhsV,vector<double> &lhsVs,const double pi, const double rho,const int nDeltaStates,const int nStates,
+			    double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum);
+void calcDeltaProposalX(const MatrixXd sig2e,const MatrixXd sig2b,const MatrixXd &Rinv,const MatrixXd &Binv,const vector<int> &delta,
+			vector<int> &dVec,vector<VectorXd> &rhsV,vector<double> &lhsV,vector<double> &lhsVs,const double pi,const double rho,const int nDeltaStates,const int nStates,
+			double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum);
+
 int writeX(const string &filename,vector<vector<int> > &X,vector<string > &ID);
   int readX(const string &filename,vector<vector<int> > &X,vector<string > &ID,idmap &seqMap);
+void rWishartX(const MatrixXd &Sigma, const double n,MatrixXd &SL,MatrixXd &S);
+void rWishartX(const MatrixXd &Sigma, const double n,MatrixXd &S);
+void Zvec(VectorXd &Z,const int n=0);
+
+void printLower(ostream &out,const MatrixXd & A,const string sep="\t");
+void printVector(ostream &out,const VectorXd & A,const string sep="\t");

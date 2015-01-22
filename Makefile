@@ -66,10 +66,10 @@ BINARY_DIR    = ~/bin/
 
 ####### Files
 
-SOURCES       =  $(SRC_DIR)BayesIM.cpp  $(SRC_DIR)PullRegions.cpp $(SRC_DIR)Configuration.cpp $(SRC_DIR)utility.cpp 
+SOURCES       =  $(SRC_DIR)BayesIM.cpp $(SRC_DIR)BayesIMmt.cpp  $(SRC_DIR)PullRegions.cpp $(SRC_DIR)Configuration.cpp $(SRC_DIR)utility.cpp 
 
 
-OBJECTS       = $(OBJECTS_DIR)BayesIM.o $(OBJECTS_DIR)PullRegions.o $(OBJECTS_DIR)Configuration.o $(OBJECTS_DIR)utility.o	
+OBJECTS       = $(OBJECTS_DIR)BayesIM.o $(OBJECTS_DIR)BayesIMmt.o $(OBJECTS_DIR)PullRegions.o $(OBJECTS_DIR)Configuration.o $(OBJECTS_DIR)utility.o	
 
 DESTDIR       = 
 
@@ -97,13 +97,16 @@ first: all
 
 ####### Build rules
 
-all: Makefile $(TARGET) bin/BayesIM bin/PullRegions # bin/imputeMCMC bin/BayesIM-new # bin/imputeTwoTrait
+all: Makefile $(TARGET) bin/BayesIM bin/BayesIMmt bin/PullRegions # bin/imputeMCMC bin/BayesIM-new # bin/imputeTwoTrait
 
 $(TARGET):  $(OBJECTS)  
 	$(LINK) $(LFLAGS) -o $(TARGET) $(OBJECTS) $(OBJCOMP) $(LIBS)
 
 bin/BayesIM:   $(OBJECTS_DIR)BayesIM.o	 $(OBJECTS_DIR)Configuration.o	  $(OBJECTS_DIR)utility.o	
 	$(LINK) $(LFLAGS) -o bin/BayesIM  $(OBJECTS_DIR)BayesIM.o $(OBJECTS_DIR)Configuration.o $(OBJECTS_DIR)utility.o $(LIBS)
+
+bin/BayesIMmt:   $(OBJECTS_DIR)BayesIMmt.o	 $(OBJECTS_DIR)Configuration.o	  $(OBJECTS_DIR)utility.o	
+	$(LINK) $(LFLAGS) -o bin/BayesIMmt  $(OBJECTS_DIR)BayesIMmt.o $(OBJECTS_DIR)Configuration.o $(OBJECTS_DIR)utility.o $(LIBS)
 
 bin/PullRegions:   $(OBJECTS_DIR)PullRegions.o	 $(OBJECTS_DIR)Configuration.o	  $(OBJECTS_DIR)utility.o	
 	$(LINK) $(LFLAGS) -o bin/PullRegions  $(OBJECTS_DIR)PullRegions.o $(OBJECTS_DIR)Configuration.o $(OBJECTS_DIR)utility.o $(LIBS)
@@ -138,6 +141,9 @@ $(OBJECTS_DIR)utility.o: $(SRC_DIR)utility.cpp $(HEADER_DIR)impute.h
 $(OBJECTS_DIR)BayesIM.o: $(SRC_DIR)BayesIM.cpp $(HEADER_DIR)impute.h $(HEADER_DIR)Configuration.h
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o $(OBJECTS_DIR)BayesIM.o $(SRC_DIR)BayesIM.cpp 
 
+$(OBJECTS_DIR)BayesIMmt.o: $(SRC_DIR)BayesIMmt.cpp $(HEADER_DIR)impute.h $(HEADER_DIR)Configuration.h
+	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o $(OBJECTS_DIR)BayesIMmt.o $(SRC_DIR)BayesIMmt.cpp 
+
 $(OBJECTS_DIR)PullRegions.o: $(SRC_DIR)PullRegions.cpp $(HEADER_DIR)impute.h $(HEADER_DIR)Configuration.h
 	$(CXX) -c $(CXXFLAGS) $(INCPATH) -o $(OBJECTS_DIR)PullRegions.o $(SRC_DIR)PullRegions.cpp 
 
@@ -155,10 +161,13 @@ $(OBJECTS_DIR)imputeMCMC.o: $(SRC_DIR)imputeMCMC.cpp $(HEADER_DIR)impute.h
 
 ####### Install
 
-install:   $(BINARY_DIR)BayesIM  $(BINARY_DIR)PullRegions
+install:   $(BINARY_DIR)BayesIM   $(BINARY_DIR)BayesIMmt $(BINARY_DIR)PullRegions
 
 $(BINARY_DIR)BayesIM: bin/BayesIM	
 	cp bin/BayesIM $(BINARY_DIR)
+
+$(BINARY_DIR)BayesIMmt: bin/BayesIMmt	
+	cp bin/BayesIMmt $(BINARY_DIR)
 
 $(BINARY_DIR)PullRegions: bin/PullRegions	
 	cp bin/PullRegions $(BINARY_DIR) 

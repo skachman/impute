@@ -3,6 +3,7 @@
 
 
 uniform_real_distribution<double> u(0.,1.);
+normal_distribution<double> Z(0.,1.);
 mt19937 gen;
 
 int main(int argc,char **argv){
@@ -195,7 +196,7 @@ int main(int argc,char **argv){
   cout << setw(22) << "nSamples = " << " " << nSamples << endl;
   cout << setw(22) << "nBurnIn = " << " " << nBurnIn << endl;
   cout << setw(22) << "deltaSampler = " << " " << deltaSampler << " # 1=Use full sampler, 2=Use nState sampler"<<endl;
-  cout <<  "                         # 3=Use full sampler with locus swap, 2=Use nState sampler with locus swap"<<endl;
+  cout <<  "                         # 3=Use full sampler with locus swap, 4=Use nState sampler with locus swap"<<endl;
   cout << setw(22) << "enableSwapActive = " << " " << enableSwapActive << " # 0=Don't swap active locus, 1=Enable swap active locus sampler"<<endl;
   cout << setw(22) << "FreqToSampleHaplo = " << " " << FreqToSampleHaplo << endl;
   cout << setw(22) << "printFreq = " << " " << printFreq << endl;
@@ -232,7 +233,7 @@ int main(int argc,char **argv){
   //matvec::UniformDist u;
   //uniform_real_distribution<double> u(0.,1.);
   //matvec::NormalDist Z;
-  normal_distribution<double> Z(0.,1.);
+
   idmap seqMap,phenMap;
   idmap::iterator seqMapIt,phenMapIt;
 
