@@ -976,7 +976,18 @@ int main(int argc,char **argv){
 
   vector<double> yDev(nPheno),gHat(nPheno),gHatSum(nPheno,0.0),gHatSumSq(nPheno,0.0),xVec(nPheno),probClass(nComb);
   double *yDevpt,*gHatpt;
-  MCMCSamples << "Sample\tmu\tsig2b\tsig2e\tsig2g\tpi";
+  MCMCSamples << "Sample\tmu";
+  if(QTLMap){
+    for(auto it=QTLClasses.begin();it !=QTLClasses.end();it++){
+      int c=it->second;
+      cout << "\t" << it->first << "_pi" << "\t" << it->first <<"_sig2b ";
+    }
+    cout << "\tsig2e\tsig2g";
+  }
+  else{
+    cout << "\tsig2b\tsig2e\tsig2g\tpi";
+  }
+  
   for(int iCl=0;iCl<nClass;iCl++) {
     if(classRandom[iCl] > -1){
       MCMCSamples << "\tsig2_"+className[iCl];
@@ -1830,7 +1841,18 @@ int main(int argc,char **argv){
       
       cout << endl <<endl;
       if(s%outputFreq==0) {
-	MCMCSamples << s << "\t" << mu+sumg <<"\t" << sig2b << "\t" <<sig2e <<"\t" << sig2g << "\t" << pi;
+	MCMCSamples << s << "\t" << mu+sumg ;
+	if(QTLMap){
+	  for(auto it=QTLClasses.begin();it !=QTLClasses.end();it++){
+	    int c=it->second;
+	    cout << "\t" << piClassVec[c] << "\t" << sig2bVec[c];
+	  }
+	  cout << "\t" <<sig2e <<"\t" << sig2g;
+	}
+	else{
+	  cout <<"\t" << sig2bVec[0]  << "\t" <<sig2e <<"\t" << sig2g<< "\t" << piClassVec[0];
+	}
+	
 	for(int iCl=0;iCl<nClass;iCl++) {
 	  if(classRandom[iCl] > -1){
 	    MCMCSamples << "\t" << sig2r[classRandom[iCl]];
