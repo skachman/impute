@@ -1,14 +1,14 @@
 #include "impute.h"
 
 
-void calcDeltaProposalFullX(const MatrixXd &sig2e,const MatrixXd &sig2b,const MatrixXd &Rinv,const MatrixXd &Binv,const vector<int> &delta,vector<vector<int> > &deltaStates,
-			    vector<int> &dVec,vector<VectorXd> &rhsV,vector<double> &lhsV,vector<double> &lhsVs,const double pi, const double rho,const int nDeltaStates,const int nStates,
+void calcDeltaProposalFullX(const Matrix2d &sig2e,const Matrix2d &sig2b,const Matrix2d &Rinv,const Matrix2d &Binv,const vector<int> &delta,vector<vector<int> > &deltaStates,
+			    vector<int> &dVec,vector<Vector2d> &rhsV,vector<Matrix2d> &lhsV,vector<Matrix2d> &lhsVs,const double pi, const double rho,const int nDeltaStates,const int nStates,
 			  double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum){
   
   //vector<int> dsum(nDeltaStates,0);
   int nTraits=sig2e.rows();
   double logDetRinv=log(Rinv.determinant());
-  MatrixXd LHS(MatrixXd::Zero(nTraits,nTraits));
+  Matrix2d LHS(Matrix2d::Zero());
   AoverIVec.assign(nDeltaStates*(nTraits+1),log((1.-pi)/pi)-log((double) nDeltaStates)+.5*log(Binv.determinant()));
   int sdt=0;
   for(int sd=0;sd<nDeltaStates;sd++){
@@ -17,8 +17,8 @@ void calcDeltaProposalFullX(const MatrixXd &sig2e,const MatrixXd &sig2b,const Ma
   //dsum.assign(nDeltaStates,0);
   sdt=0;
   for(int sd=0;sd<nDeltaStates;sd++){
-    double lhs=0;
-    VectorXd rhs(VectorXd::Zero(nTraits));
+    Matrix2d lhs(Matrix2d::Zero());
+    Vector2d rhs(Vector2d::Zero());
     dVec=deltaStates[sd];
     //if(sd != nStates) dVec[sd]=1-dVec[sd];
     int IJ=0;
@@ -36,7 +36,7 @@ void calcDeltaProposalFullX(const MatrixXd &sig2e,const MatrixXd &sig2b,const Ma
   
     for(int t=0;t<nTraits;t++){
       LHS.setZero();
-      LHS(t,t)=lhs*Rinv(t,t);
+      LHS(t,t)=lhs(t,t);
       LHS+=Binv;
       AoverIVec[sdt]+=0.5*(rhs.dot(LHS.llt().solve(rhs))-log(LHS.determinant()))+log((1.-rho)/((double) nTraits));
       if(AoverIVec[sdt]> maxAoverI) {
@@ -44,7 +44,7 @@ void calcDeltaProposalFullX(const MatrixXd &sig2e,const MatrixXd &sig2b,const Ma
       }
       sdt++;
     }
-    LHS=Rinv*lhs+Binv;
+    LHS=lhs+Binv;
     AoverIVec[sdt]+=0.5*(rhs.dot(LHS.llt().solve(rhs))-log(LHS.determinant()))+log(rho);
     if(AoverIVec[sdt]> maxAoverI) {
       maxAoverI=AoverIVec[sdt];
@@ -63,16 +63,18 @@ void calcDeltaProposalFullX(const MatrixXd &sig2e,const MatrixXd &sig2b,const Ma
   }
 }
 
-void calcDeltaProposalX(const MatrixXd sig2e,const MatrixXd sig2b,const MatrixXd &Rinv,const MatrixXd &Binv,const vector<int> &delta,
-			vector<int> &dVec,vector<VectorXd> &rhsV,vector<double> &lhsV,vector<double> &lhsVs,const double pi,const double rho,const int nDeltaStates,const int nStates,
-			 double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum){
+void calcDeltaProposalX(const Matrix2d sig2e,const Matrix2d sig2b,const Matrix2d &Rinv,const Matrix2d &Binv,const vector<int> &delta,
+			vector<int> &dVec,vector<Vector2d> &rhsV,vector<Matrix2d> &lhsV,vector<Matrix2d> &lhsVs,const double pi,const double rho,const int nDeltaStates,const int nStates,
+			double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum,const double RinvLogDet,const double BinvLogDet){
   
   int nTraits=sig2e.rows();
-  double logDetRinv=log(Rinv.determinant());
-  
-  MatrixXd LHS(MatrixXd::Zero(nTraits,nTraits));
+  double logDetRinv=RinvLogDet;//log(Rinv.determinant());
+  //cout << Binv(0,0) << endl;
+  Matrix2d LHS(Matrix2d::Zero());
+  Vector2d RHS(Vector2d::Zero());
   vector<int> dsum(nStates+1,0);
-  AoverIVec.assign(nStates+1,log((1.-pi)/pi)-log((double) nDeltaStates)+log(Binv.determinant())); int sdt=0;
+  AoverIVec.assign((nTraits+1)*(nStates+1),log((1.-pi)/pi)-log((double) nDeltaStates)+0.5*BinvLogDet);
+  int sdt=0;
   /*for(int sd=0;sd<=nStates;sd++){
     for(int t=0;t<nTraits;t++){
       AoverIVec[sdt++]-=.5*log(sig2b(t,t));
@@ -84,8 +86,8 @@ void calcDeltaProposalX(const MatrixXd sig2e,const MatrixXd sig2b,const MatrixXd
   
   sdt=0;
   for(int sd=0;sd<=nStates;sd++){
-    double lhs=0;
-    VectorXd rhs(VectorXd::Zero(nTraits,nTraits));
+    Matrix2d lhs(Matrix2d::Zero());
+    Vector2d rhs(Vector2d::Zero());
     dVec=delta;
     if(sd != nStates) dVec[sd]=1-dVec[sd];
     int IJ=0;
@@ -98,20 +100,25 @@ void calcDeltaProposalX(const MatrixXd sig2e,const MatrixXd sig2b,const MatrixXd
       for(int J=0;J<=I;J++,IJ++){
 	if(dVec[I] && dVec[J]) lhs+=lhsV[IJ];      
       }
-    }
+     }
 
       for(int t=0;t<nTraits;t++){
       LHS.setZero();
-      LHS(t,t)=lhs*Rinv(t,t);
+      RHS.setZero();
+      RHS(t)=rhs(t);
+      LHS(t,t)=lhs(t,t);
       LHS+=Binv;
-      AoverIVec[sdt]+=0.5*(rhs.dot(LHS.llt().solve(rhs))-log(LHS.determinant()))+log((1.-rho)/((double) nTraits));
+      //cout << sdt << " " << sd<< endl;
+      AoverIVec[sdt]+=0.5*(RHS.dot(LHS.llt().solve(RHS))-log(LHS.determinant()))+log((1.-rho)/((double) nTraits));
       if(AoverIVec[sdt]> maxAoverI) {
 	maxAoverI=AoverIVec[sdt];
       }
       sdt++;
     }
-    LHS=Rinv*lhs+Binv;
-    AoverIVec[sdt]+=0.5*(rhs.dot(LHS.llt().solve(rhs))-log(LHS.determinant()))+log(rho);
+    LHS=lhs+Binv;
+    RHS=rhs;
+    // cout << sdt << endl;
+    AoverIVec[sdt]+=0.5*(RHS.dot(LHS.llt().solve(RHS))-log(LHS.determinant()))+log(rho);
     if(AoverIVec[sdt]> maxAoverI) {
       maxAoverI=AoverIVec[sdt];
     }
@@ -377,6 +384,8 @@ void qtlXLocusSum::init(int ns,int nt){
   activeTrait.assign(nt,0);
   b.resize(nt);
   b.setZero();
+  all=0;
+  delta.resize(nt);
   for(int l=0;l<nt;l++) delta[l].assign(ns,0);
   t=nt;
   active=0;
@@ -384,11 +393,12 @@ void qtlXLocusSum::init(int ns,int nt){
 }
 
 
-void qtlXLocusSum::updateSum(const qtlXLocus &A){
+void qtlXLocusSum::updateSum(const qtlXLocus &A,const int nt){
   
   if(A.active){
     active++;
-    for(int l=0;l<t;l++){
+    if(t==nt) all++;
+    for(int l=0;l<nt;l++){
       if(A.activeTrait[l]){
 	activeTrait[l]++;
 	if(A.b[l] >0){
@@ -408,7 +418,7 @@ void qtlXLocusSum::updateSum(const qtlXLocus &A){
   }
 }
 
-void qtlXLocus::init(int ns,int nt,MatrixXd &bL,double pi,double rho){
+void qtlXLocus::init(int ns,int nt,Matrix2d &bL,double pi,double rho){
   
   activeTrait.assign(nt,0);
   b.resize(nt);
@@ -926,10 +936,10 @@ void backwardVec(const long start, const long end,hmm &HMM, const vector<int> &X
 }
 
 
-void rWishartX(const MatrixXd &Sigma, const double n,MatrixXd &SL,MatrixXd &S){
+void rWishartX(const Matrix2d &Sigma, const double n,Matrix2d &SL,Matrix2d &S){
   int p=Sigma.rows();
   MatrixXd A = Sigma.llt().matrixL();
-  MatrixXd L(MatrixXd::Zero(p,p));
+  MatrixXd L(Matrix2d::Zero());
   double alpha=n/2.;
   for(int i=0;i<p;i++){
     for(int j=0;j<i;j++){
@@ -943,10 +953,10 @@ void rWishartX(const MatrixXd &Sigma, const double n,MatrixXd &SL,MatrixXd &S){
   S=SL*SL.transpose();
 }
 
-void rWishartX(const MatrixXd &Sigma, const double n,MatrixXd &S){
+void rWishartX(const Matrix2d &Sigma, const double n,Matrix2d &S){
   int p=Sigma.rows();
   MatrixXd A = Sigma.llt().matrixL();
-  MatrixXd L(MatrixXd::Zero(p,p));
+  MatrixXd L(Matrix2d::Zero());
   double alpha=n/2.;
   for(int i=0;i<p;i++){
     for(int j=0;j<i;j++){
@@ -962,10 +972,10 @@ void rWishartX(const MatrixXd &Sigma, const double n,MatrixXd &S){
 
 
 
-void Zvec(VectorXd &zVec,const int n){
-  if(n){
+void Zvec(Vector2d &zVec,const int n){
+  /*if(n){
     zVec.resize(n);
-  }
+    }*/
   int N=zVec.size();
   for(int i=0;i<N;i++) zVec(i)=Z(gen); 
 }

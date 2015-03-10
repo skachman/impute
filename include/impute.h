@@ -65,6 +65,17 @@ class haploMapLocus{
   vector<int> a;
   haploMapLocus(int ns=0,int np=0){start.resize(ns+1,0);a.resize(2*np);};
 };
+/*class Vector1d{
+ public:
+  double dat;
+  Vector1d opertor+(const Vector1d &a){Vector1d x; x.dat=dat+a.dat;return x;};
+  Vector1d opertor*(const Vector1d &a){Vector1d x; x.dat=dat*a.dat;return x;};
+  Vector1d opertor+(const double &a){Vector1d x; x.dat=dat+a;return x;};
+  Vector1d opertor*(const double &a){Vector1d x; x.dat=dat*a;return x;};
+  void Vector1d::Zero(){dat=0;};  
+  double dot(const Vector1d &a){return dat*a.dat;}
+  void SetZero(){dat=0;}
+  }*/
 
 bool locusMapCompare(locusMap &A,locusMap &B);
 
@@ -90,27 +101,28 @@ class qtlResultLocus{
 
 class qtlXLocus{
  public:
-  VectorXd b;
+  Vector2d b;
   vector<int> delta;
   int active;
   int t;
   vector<int> activeTrait;
   list<long> *activePos;
-  void init(int nc,int nt,MatrixXd &bL,double pi,double rho);
+  void init(int nc,int nt,Matrix2d &bL,double pi,double rho);
   void init(int nc,int nt);
   //void updateSum(const qtlXLocus &A);
 };
 class qtlXLocusSum{
  public:
-  VectorXd b;
+  Vector2d b;
   vector<vector<int> > delta;
   int active;
   int t;
+  int all;
   vector<int> activeTrait;
   list<long> *activePos;
-  //void init(int nc,int nt,MatrixXd &bL,double pi,double rho);
+  //void init(int nc,int nt,Matrix2d &bL,double pi,double rho);
   void init(int nc,int nt);
-  void updateSum(const qtlXLocus &A);
+  void updateSum(const qtlXLocus &A,const int nt);
 };
 
 class haploLocus{
@@ -276,18 +288,18 @@ void calcDeltaProposalFull(const double sig2e,const double sig2b,const vector<in
 			 double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum);
 
 
-void calcDeltaProposalFullX(const MatrixXd &sig2e,const MatrixXd &sig2b,const MatrixXd &Rinv,const MatrixXd &Binv,const vector<int> &delta,vector<vector<int> > &deltaStates,
-			    vector<int> &dVec,vector<VectorXd> &rhsV,vector<double> &lhsV,vector<double> &lhsVs,const double pi, const double rho,const int nDeltaStates,const int nStates,
+void calcDeltaProposalFullX(const Matrix2d &sig2e,const Matrix2d &sig2b,const Matrix2d &Rinv,const Matrix2d &Binv,const vector<int> &delta,vector<vector<int> > &deltaStates,
+			    vector<int> &dVec,vector<Vector2d> &rhsV,vector<Matrix2d> &lhsV,vector<Matrix2d> &lhsVs,const double pi, const double rho,const int nDeltaStates,const int nStates,
 			    double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum);
-void calcDeltaProposalX(const MatrixXd sig2e,const MatrixXd sig2b,const MatrixXd &Rinv,const MatrixXd &Binv,const vector<int> &delta,
-			vector<int> &dVec,vector<VectorXd> &rhsV,vector<double> &lhsV,vector<double> &lhsVs,const double pi,const double rho,const int nDeltaStates,const int nStates,
-			double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum);
+void calcDeltaProposalX(const Matrix2d sig2e,const Matrix2d sig2b,const Matrix2d &Rinv,const Matrix2d &Binv,const vector<int> &delta,
+			vector<int> &dVec,vector<Vector2d> &rhsV,vector<Matrix2d> &lhsV,vector<Matrix2d> &lhsVs,const double pi,const double rho,const int nDeltaStates,const int nStates,
+			double &pInactive,double &maxAoverI,vector<double> &AoverIVec,double &psum,const double RinvLogDet,const double BinvLogDet);
 
 int writeX(const string &filename,vector<vector<int> > &X,vector<string > &ID);
   int readX(const string &filename,vector<vector<int> > &X,vector<string > &ID,idmap &seqMap);
-void rWishartX(const MatrixXd &Sigma, const double n,MatrixXd &SL,MatrixXd &S);
-void rWishartX(const MatrixXd &Sigma, const double n,MatrixXd &S);
-void Zvec(VectorXd &Z,const int n=0);
+void rWishartX(const Matrix2d &Sigma, const double n,Matrix2d &SL,Matrix2d &S);
+void rWishartX(const Matrix2d &Sigma, const double n,Matrix2d &S);
+void Zvec(Vector2d &Z,const int n=2);
 
 void printLower(ostream &out,const MatrixXd & A,const string sep="\t");
 void printVector(ostream &out,const VectorXd & A,const string sep="\t");

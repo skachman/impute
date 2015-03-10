@@ -12,8 +12,9 @@ int main(int argc,char **argv){
   string randomString;
   bool QTLMap;
   int nRandom=0;
-  int fixEmitIteration=0;
-  vector<double> sig2rPrior,sig2r,nusig2r;
+  int nTraits=2;
+  vector<Matrix2d> sig2rPrior,sig2r;
+  vector <double> nusig2r;
   map<string,int> sig2rVar;
   int failCode;
   mapName="Map.txt";
@@ -21,7 +22,7 @@ int main(int argc,char **argv){
   int freqQTLKb=25; 
   int nStates=4;
   double lambdaKb=500.;
-  
+  double rho=.5;
   double c=.95; // Not Used
   int nIter=0; // Number of iteration to build HMM
   string baseName,MCMCName,QTLName,gHatName;
@@ -32,8 +33,9 @@ int main(int argc,char **argv){
   int printFreq=10;
   int outputFreq=8;
   int windowSize=10;  //windowWidth=2*windowSize+1
-  double sig2bPrior=.05,sig2ePrior=5;
-  double pi=.99,mu=0,inactiveProposal=0.9;
+  Matrix2d sig2bPrior,sig2ePrior;
+  double pi=.99,inactiveProposal=0.9;
+  Vector2d mu;
   double nusig2e=10,nusig2b=4;
   int deltaSampler=2;
   
@@ -41,6 +43,7 @@ int main(int argc,char **argv){
   
   double piPrior=0.99,piPriorCount=0;
   MCMCName=baseName+"_MCMCSamples.txt";
+
   QTLName=baseName+"_QTLResults.txt";
   gHatName=baseName+"_gHatResults.txt";
 
@@ -49,27 +52,45 @@ int main(int argc,char **argv){
   vector<int> QTLClassVec,QTLClassCount;
   map<string,int> QTLClasses;
   string QTLClassStr;
-  vector<double> sig2bPriorVec,sig2bVec,nusig2bVec,piPriorVec,piPriorCountVec,piClassVec;
+  vector<Matrix2d> sig2bPriorVec,sig2bVec;
+  vector<double> nusig2bVec,piPriorVec,piPriorCountVec,piClassVec;
 
   
   Configuration config;
   string QTLString;
   if(argc>1){
     if(!config.Load(argv[1])) exit(1);
-    config.Get("fixEmitIteration",fixEmitIteration);
+    
+    config.Get("nTraits",nTraits);
     config.Get("nusig2b",nusig2b);
-    config.Get("sig2bPrior",sig2bPrior);
-    config.Get("pi",pi);
-    piPrior=pi;
-    config.Get("piPrior",piPrior);
+    string varianceString;
+    config.Get("sig2bPrior",varianceString);
+    sig2bPrior.resize(nTraits,nTraits);
+    {
+      double val;
+      stringstream line(varianceString);
+      for(int i=0;i<nTraits;i++){
+	for(int j=0;j<i;j++){
+	  line >> val;
+	  sig2bPrior(i,j)=val;
+	  sig2bPrior(j,i)=val;
+	}
+	  line >> val;
+	  sig2bPrior(i,i)=val;
+      }
+    }
+    bool setPi=config.Get("pi",pi);
+    if(!config.Get("piPrior",piPrior)) piPrior=pi;
+    if(!setPi)pi=piPrior;
     config.Get("piPriorCount",piPriorCount);
+    config.Get("rho",rho);
     config.Get("genoName",genoName);
     config.Get("phenoName",phenoName);
     config.Get("mapName",mapName);
     QTLMap=config.Get("QTLMapName",QTLMapName);
     if(config.Get("QTLClasses",QTLString)){
       int next;
-      
+      Matrix2d sigtmp(nTraits,nTraits);
       while(QTLString.length() && (next=QTLString.find_first_not_of(" \t")) !=string::npos){
 	double val;
 	QTLString=QTLString.substr(next);
@@ -80,9 +101,23 @@ int main(int argc,char **argv){
 	QTLClassCount.push_back(0);
 	if(!config.Get("QTLnu_"+label,val)) val=nusig2b;
 	nusig2bVec.push_back(val);
-	if(!config.Get("sig2bPrior_"+label,val)) val=sig2bPrior;
-	sig2bPriorVec.push_back(val);
-	sig2bVec.push_back(val);
+	if(!config.Get("sig2bPrior_"+label,varianceString)) {
+	  sig2bPriorVec.push_back(sig2bPrior);
+	}
+	else{
+	  stringstream line(varianceString);
+	  for(int i=0;i<nTraits;i++){
+	    for(int j=0;j<i;j++){
+	      line >> val;
+	      sigtmp(i,j)=val;
+	      sigtmp(j,i)=val;
+	    }
+	    line >> val;
+	    sigtmp(i,i)=val;
+	  }
+	  sig2bPriorVec.push_back(sigtmp);
+	}
+	sig2bVec.push_back(sigtmp);
 	if(!config.Get("piPrior_"+label,val)) val=piPrior;
 	piPriorVec.push_back(val);
 	if(!config.Get("piPriorCount_"+label,val)) val=piPriorCount;
@@ -125,14 +160,40 @@ int main(int argc,char **argv){
     config.Get("deltaSampler",deltaSampler);
     config.Get("enableJiggle",enableSwapActive);
     config.Get("enableSwapActive",enableSwapActive);
+    if(enableSwapActive && (deltaSampler==1 || deltaSampler==2)) deltaSampler+=2;
+    enableSwapActive=0;
     config.Get("FreqToSampleHaplo",FreqToSampleHaplo);
     config.Get("printFreq",printFreq);
     config.Get("outputFreq",outputFreq);
     config.Get("c",c); //Not Used
     config.Get("windowSize",windowSize); //Not Used
     config.Get("nusig2e",nusig2e);
-    config.Get("sig2ePrior",sig2ePrior);
-    config.Get("mu",mu);
+
+    config.Get("sig2ePrior",varianceString);
+    sig2ePrior.resize(nTraits,nTraits);
+    {
+      stringstream line(varianceString);
+      double val;
+      for(int i=0;i<nTraits;i++){
+	for(int j=0;j<i;j++){
+	  line >> val;
+	  sig2ePrior(i,j)=val;
+	  sig2ePrior(j,i)=val;
+	}
+	line >> val;
+	sig2ePrior(i,i)=val;
+      }
+    }
+    string muString;
+    mu=Vector2d::Zero();
+    if(config.Get("mu",muString)){
+      double val;
+      stringstream line(muString);
+      for(int t=0;t<nTraits;t++) {
+	line >>mu[t];
+      }
+    }
+    
     config.Get("inactiveProposal",inactiveProposal);
     if(config.Get("randomEffects",randomString)){
       int next;
@@ -146,9 +207,26 @@ int main(int argc,char **argv){
 	sig2rVar[label]=nRandom;
 	if(!config.Get("nu_"+label,val)) val=4;
 	nusig2r.push_back(val);
-	if(!config.Get("sig2Prior_"+label,val)) val=sig2ePrior;
-	sig2rPrior.push_back(val);
-	sig2r.push_back(val);
+	if(!config.Get("sig2Prior_"+label,varianceString)) {
+	  sig2rPrior.push_back(sig2ePrior);
+	  sig2r.push_back(sig2ePrior);
+	}
+	else{
+	  Matrix2d sigtmp(nTraits,nTraits);
+	  stringstream line(varianceString);
+	  double val;
+	  for(int i=0;i<nTraits;i++){
+	    for(int j=0;j<i;j++){
+	      line >> val;
+	      sigtmp(i,j)=val;
+	      sigtmp(j,i)=val;
+	    }
+	    line >> val;
+	    sigtmp(i,i)=val;
+	  }
+	  sig2rPrior.push_back(sigtmp);
+	  sig2r.push_back(sigtmp);
+	}
 	nRandom++;
 
     if(last != string::npos){
@@ -158,13 +236,15 @@ int main(int argc,char **argv){
       }
     }
 
-  }
+    }
   double lambda=lambdaKb*1000.;
   int freqQTL=freqQTLKb*1000;
 
   cout << argv[0] << ": Version 2.0" << " Mar. 10, 2015" << endl << endl;
   
   cout << "Input Parameters" << endl <<endl;
+  
+  cout << setw(22) << "nTraits = " << " " << nTraits << endl;
   cout << setw(22) << "genoName = " << " " << genoName << endl;
   cout << setw(22) << "phenoName = " << " " << phenoName << endl;
   cout << setw(22) << "mapName = " << " " << mapName << endl;
@@ -179,7 +259,13 @@ int main(int argc,char **argv){
       string label=it->first;
       int c=it->second;
       cout << setw(22) << "QTLnu_"+label+" = "  << " " << nusig2bVec[c] << endl; 
-      cout << setw(22) << "sig2bPrior_"+label+" = "  << " " << sig2bPriorVec[c] << endl; 
+      cout << setw(22) << "sig2bPrior_"+label+" = "  ;
+      for(int i=0;i<nTraits;i++){
+	for(int j=0;j<=i;j++){
+	  cout << " " << sig2bPriorVec[c](i,j);
+	}
+      }
+      cout << endl; 
       cout << setw(22) << "piPrior_"+label+" = "  << " " << piPriorVec[c] << endl; 
       cout << setw(22) << "piPriorCount_"+label+" = "  << " " << piPriorVec[c] << endl; 
     }
@@ -189,7 +275,6 @@ int main(int argc,char **argv){
   cout << setw(22) << "nStates = " << " " << nStates << endl;
   cout << setw(22) << "lambdaKb = " << " " << lambdaKb << endl;
   cout << setw(22) << "nIter = " << " " << nIter << endl;
-  cout << setw(22) << "fixEmitIteration = " << " " << fixEmitIteration << endl;
   cout << setw(22) << "baseName = " << " " << baseName << endl;
   cout << setw(22) << "MCMCName = " << " " << MCMCName <<endl;
   cout << setw(22) << "QTLName = " << " " << QTLName <<endl;
@@ -198,17 +283,30 @@ int main(int argc,char **argv){
   cout << setw(22) << "nSamples = " << " " << nSamples << endl;
   cout << setw(22) << "nBurnIn = " << " " << nBurnIn << endl;
   cout << setw(22) << "deltaSampler = " << " " << deltaSampler << " # 1=Use full sampler, 2=Use nState sampler"<<endl;
-  cout <<  "                         # 3=Use full sampler with locus swap, 4=Use nState sampler with locus swap"<<endl;
-  cout << setw(22) << "enableSwapActive = " << " " << enableSwapActive << " # 0=Don't swap active locus, 1=Enable swap active locus sampler"<<endl;
+  cout <<  "                         # 3=Use full sampler with locus swap, 2=Use nState sampler with locus swap"<<endl;
+  // cout << setw(22) << "enableSwapActive = " << " " << enableSwapActive << " # 0=Don't swap active locus, 1=Enable swap active locus sampler"<<endl;
   cout << setw(22) << "FreqToSampleHaplo = " << " " << FreqToSampleHaplo << endl;
   cout << setw(22) << "printFreq = " << " " << printFreq << endl;
   cout << setw(22) << "outputFreq = " << " " << outputFreq << endl;
   //cout << setw(22) << "c = " << " " << c << endl;
   //cout << setw(22) << "windowSize = " << " " << windowSize << endl;
   cout << setw(22) << "nusig2e = " << " " << nusig2e << endl;
-  cout << setw(22) << "sig2ePrior = " << " " << sig2ePrior << endl;
+  cout << setw(22) << "sig2ePrior = ";
+  for(int i=0;i<nTraits;i++){
+    for(int j=0;j<=i;j++){
+      cout << " " << sig2ePrior(i,j);
+    }
+  }
+  cout << endl; 
   cout << setw(22) << "nusig2b = " << " " << nusig2b << endl;
-  cout << setw(22) << "sig2bPrior = " << " " << sig2bPrior << endl;
+  cout << setw(22) << "sig2bPrior = " ;
+  for(int i=0;i<nTraits;i++){
+    for(int j=0;j<=i;j++){
+      cout << " " << sig2bPrior(i,j);
+    }
+  }
+  cout << endl; 
+  
   if(nRandom){
     cout << setw(22) << "randomEffects =" ;
     for (std::map<string,int>::iterator it=sig2rVar.begin(); it!=sig2rVar.end(); ++it){ 
@@ -219,15 +317,30 @@ int main(int argc,char **argv){
       string label=it->first;
       int rEffect=it->second;
       cout << setw(22) << "nu_"+label+" = "  << " " << nusig2r[rEffect] << endl; 
-      cout << setw(22) << "sig2Prior_"+label+" = "  << " " << sig2rPrior[rEffect] << endl; 
+      cout << setw(22) << "sig2Prior_"+label+" = ";
+      for(int i=0;i<nTraits;i++){
+	for(int j=0;j<=i;j++){
+	  cout << " " << sig2rPrior[rEffect](i,j);
+	}
+      }
+      cout << endl; 
     }
   }
   cout << setw(22) << "pi = " << " " << pi << endl;
   cout << setw(22) << "piPrior = " << " " << piPrior << endl;
   cout << setw(22) << "piPriorCount = " << " " << piPriorCount << " # 0=Fixed"<< endl;
-  cout << setw(22) << "mu = " << " " << mu << endl;
+  
+  cout << setw(22) << "rho = " << " " << rho << " # an active QTL is active for a specific trait" << endl;
+  cout << setw(22) << "mu = " ;
+  printVector(cout,mu," ");
+  cout << endl;
   cout << setw(22) << "inactiveProposal = " << " " << inactiveProposal << endl;
   cout << endl << endl;
+
+  if(nTraits!=2) {
+    cout << "Ntraits is not equal to 2!" << endl;
+    exit(835);
+  }
   
   //cout << "Maximum value for int:  " << numeric_limits<int>::max() << '\n';
   //cout << "Maximum value for long: " << numeric_limits<long>::max() << '\n';
@@ -235,7 +348,7 @@ int main(int argc,char **argv){
   //matvec::UniformDist u;
   //uniform_real_distribution<double> u(0.,1.);
   //matvec::NormalDist Z;
-
+  //normal_distribution<double> Z(0.,1.);
   idmap seqMap,phenMap;
   idmap::iterator seqMapIt,phenMapIt;
 
@@ -253,6 +366,8 @@ int main(int argc,char **argv){
   double val;
   int iVal;
   string sVal;
+  
+  Vector2d zVec;
   unsigned seed=3434241;
   random_device rd;
   //mt19937 gen;
@@ -415,7 +530,12 @@ int main(int argc,char **argv){
     exit(102);
   }
   getline(Pheno,line);
-  vector<double> y,Xmu,rinverse;
+  vector<Vector2d> y;
+  Vector2d ytmp(nTraits);
+  Vector2d rinvtmp(nTraits);
+  for(int t=0;t<nTraits;t++) rinvtmp[t]=1.;
+  vector<double> Xmu;
+  vector<Vector2d> rinverse;
   vector<int> phenSeq;
   vector<string> phenID;
   vector<string> phenLabels;
@@ -423,7 +543,7 @@ int main(int argc,char **argv){
   vector<int > classRandom;
   vector<variable_t> varType;
   int nColumns=0;
-  int rinversePos=0;
+  vector<int> rinversePos;
   stringstream leader(line);
   int next;
   int nCovariate=0;
@@ -434,17 +554,18 @@ int main(int argc,char **argv){
     int last=line.find_first_of(" \t");
     if(last != string::npos) label=line.substr(0,last);
     phenLabels.push_back(label);
-    switch(nColumns){
-    case 0:
-      varType.push_back(VAR_ID);
-      break;
-    case 1:
-      varType.push_back(VAR_DEP_VAR);
-      break;
-    default:
+    if(nColumns <= nTraits){
+      if(nColumns==0){
+	varType.push_back(VAR_ID);
+      }
+      else{
+	varType.push_back(VAR_DEP_VAR);
+      }
+    }
+    else {
       if(label=="rinverse") {
 	varType.push_back(VAR_RINVERSE);
-	rinversePos=nColumns;
+	rinversePos.push_back(nColumns);
       }
       else{
 	char lastChar=label[label.length()-1];
@@ -468,7 +589,7 @@ int main(int argc,char **argv){
 	  nCovariate++;
 	}
       }
-    }
+    } 
     if(last != string::npos){
       line=line.substr(last);
     }
@@ -476,24 +597,22 @@ int main(int argc,char **argv){
     nColumns++;
   }
 
- 
+  int nrinv=rinversePos.size();
+  if(nrinv!=0 && nrinv !=nTraits){
+    cout << "The number of rinverse columns " << nrinv << " must be equal to 0 or the number of traits." << endl;
+    exit(3431);
+  }
   nColumns=phenLabels.size();
-  if(0)
-    {
-      for(int col=0;col<nColumns;col++){
-	cout << phenLabels[col] <<" " <<varType[col];
-	if(col==rinversePos) cout  << " rinverse";
-	cout << endl;
-      }
-    }
+  
 
   vector<  map<string,int> > classMatrix(nClass);
   vector<vector<string> > classValues(nClass);
   
   map<string,int>::iterator classIt;
   vector< vector<int> > posMatrix(nClass);
-  vector< vector<double> > valMatrix(nCovariate),betaClass(nClass);
-  vector<double> betaCov(nCovariate,0.);
+  vector< vector<double> > valMatrix(nCovariate);
+  vector<vector<Vector2d> > betaClass(nClass);
+  vector<Vector2d> betaCov(nCovariate,Vector2d::Zero());
   vector<int > nLevels(nClass,0);
   
 
@@ -502,23 +621,26 @@ int main(int argc,char **argv){
   while(getline(Pheno,line)){
     int iCl=0;
     int iCv=0;
-    
+    int iRinv=0;
     stringstream linestream(line);
     linestream >> id;
     seqMapIt=seqMap.find(id);
     if(seqMapIt != seqMap.end()){
       phenID.push_back(id);
       phenSeq.push_back(seqMapIt->second);
-      if(!rinversePos) rinverse.push_back(1.);
+      if(!nrinv) rinverse.push_back(rinvtmp);
+      int t=0;
       for(int col=1;col<nColumns;col++){
 	switch(varType[col]){
 	case VAR_DEP_VAR:
 	  linestream >> val;
-	  y.push_back(val);
+	  ytmp[t++]=val;
+	  if(t==nTraits) y.push_back(ytmp);
 	  break;
 	case VAR_RINVERSE:
 	  linestream >> val;
-	  rinverse.push_back(val);
+	  rinvtmp[iRinv++]=sqrt(val);
+	  if(iRinv==nTraits)rinverse.push_back(rinvtmp);
 	  break;
 	case VAR_COVARIATE:
 	  linestream >> val;
@@ -530,7 +652,7 @@ int main(int argc,char **argv){
 	  if(classIt==classMatrix[iCl].end()){
 	    classValues[iCl].push_back(sVal);
 	    classMatrix[iCl][sVal]=nLevels[iCl]++;
-	    betaClass[iCl].push_back(0.);
+	    betaClass[iCl].push_back(Vector2d::Zero());
 	  }
 	  iVal=classMatrix[iCl][sVal];
 	  posMatrix[iCl++].push_back(iVal);
@@ -540,6 +662,7 @@ int main(int argc,char **argv){
 	}
 	  
       }
+      
     }
   }
   
@@ -548,9 +671,11 @@ int main(int argc,char **argv){
   cout << "Matched Phenotypes "<< nPheno  << endl << endl;
   if(1){
     for(int i=0;i< 10;i++){
-      cout << setw(5) << phenSeq[i] << " ID " << setw(10) <<  ID[phenSeq[i]] << " y " << setw(10) 
-	   << setprecision(5) << y[i] ;
-      if(rinversePos) cout << " Rinv " << setw(10) << setprecision(5) << rinverse[i] ;
+      cout << setw(5) << phenSeq[i] << " ID " << setw(10) <<  ID[phenSeq[i]];
+      for(int t=0;t<nTraits;t++){
+	cout << " y " << setw(10) << setprecision(5) << y[i][t] ;
+      }
+      for(int iRinv=0;iRinv<nrinv;iRinv++) cout << " Rinv " << setw(10) << setprecision(5) << rinverse[i](iRinv) ;
       for(int iCl=0;iCl<nClass;iCl++) cout << " Pos " << setw(2) << posMatrix[iCl][i];
       for(int iCv=0;iCv<nCovariate;iCv++) cout << " Val " << setw(6) << setprecision(4) << valMatrix[iCv][i];
       cout << endl;
@@ -718,14 +843,6 @@ int main(int argc,char **argv){
       for(int l=0;l<nStates;l++){
 	if(HMM.loci[i].pState[l] > 0){
 	  HMM.loci[i].e[l]=HMM.loci[i].E[l]/HMM.loci[i].pState[l];
-	  if(fixEmitIteration && (iter+1)  >= fixEmitIteration ){
-	    if(HMM.loci[i].e[l] > 0.5) {
-	      HMM.loci[i].e[l]=.99;
-	    }
-	    else{
-	      HMM.loci[i].e[l]=.01;
-	    }
-	  }
 	  if(isnan(HMM.loci[i].e[l])) cout << i << " " << l << " "<< HMM.loci[i].E[l]<< " " <<HMM.loci[i].pState[l]<< endl;
 	}
 	else{
@@ -818,6 +935,7 @@ int main(int argc,char **argv){
       if(nIter) for(int l=0;l<nStates;l++) snpResults << "\t" <<HMM.loci[i].pState[l]/(2.*(nSeq+priorCount));
       snpResults << endl;
     }
+    snpResults.close();
   }
     // Add QTL loci;
     int q=0;
@@ -944,8 +1062,7 @@ int main(int argc,char **argv){
 
   
   MCMCSamples.open(MCMCName);
-  QTLResults.open(QTLName);
-  gHatResults.open(gHatName);
+
 
   //double sig2bPrior=.5,sig2ePrior=20;
   
@@ -954,13 +1071,15 @@ int main(int argc,char **argv){
   //int nBurnIn=2;
   
   vector<double> AoverIVecP,AoverIVec;
-  double sig2e=sig2ePrior,sig2b=sig2bPrior,sig2g;
-  double scaleRes=sig2ePrior*(nusig2e-2.);
-  double scaleB=sig2bPrior*(nusig2b-2.);
+  Matrix2d sig2e=sig2ePrior,sig2b=sig2bPrior,sig2g;
+  Matrix2d scaleRes=sig2ePrior*(nusig2e-((double) nTraits)-1.);
+  Matrix2d scaleB=sig2bPrior*(nusig2b-((double) nTraits)-1.);
   double nuTilde,uSmp;
   double flipDelta=1./((double) nStates);
-  vector<qtlLocus> qtlVec,qtlSumVec;
-  vector<int> windowSumVec,windowVec;
+  vector<qtlXLocus> qtlVec;
+  vector<qtlXLocusSum> qtlSumVec;
+  vector<int> windowVec,windowLocus(nTraits,0);
+  vector<vector<int> > windowSumVec;
   vector<long> activeLoci;
   long activePos=0;
 
@@ -972,44 +1091,67 @@ int main(int argc,char **argv){
 
   qtlVec.resize(nQTLLoci);
   qtlSumVec.resize(nQTLLoci);
-  windowSumVec.assign(nQTLLoci,0);
+  windowSumVec.assign(nQTLLoci,windowLocus);
   windowVec.resize(nQTLLoci);
   activeLoci.resize(0);
+  LLT<Matrix2d> lltOfsig2b(sig2b);
+  Matrix2d Bl=lltOfsig2b.matrixL();
   for(long i=0;i<nQTLLoci;i++) {
-    qtlVec[i].init(nStates,sig2b,pi);
-    qtlSumVec[i].init(nStates);
+    qtlVec[i].init(nStates,nTraits,Bl,pi,rho);
+    qtlSumVec[i].init(nStates,nTraits);
     if(qtlVec[i].active){
       activeLoci.push_back(i);
     }
   }
   long nQTL=activeLoci.size();
 
-  vector<double> yDev(nPheno),gHat(nPheno),gHatSum(nPheno,0.0),gHatSumSq(nPheno,0.0),xVec(nPheno),probClass(nComb);
-  double *yDevpt,*gHatpt;
-  MCMCSamples << "Sample\tmu";
+  vector<Vector2d> yDev(nPheno,Vector2d::Zero()),gHat(nPheno,Vector2d::Zero()),
+    gHatSum(nPheno,Vector2d::Zero());
+  vector<Matrix2d> gHatSumSq(nPheno,Matrix2d::Zero());
+  vector<double> xVec(nPheno),probClass(nComb);
+  Vector2d *yDevpt,*gHatpt;
+  //MCMCSamples << "Sample\tmu\tsig2b\tsig2e\tsig2g\tpi";
+  
+  MCMCSamples << "Sample";
+  for(int i=0;i<nTraits;i++) MCMCSamples << "\tmu_"+phenLabels[i+1];
   if(QTLMap){
     for(auto it=QTLClasses.begin();it !=QTLClasses.end();it++){
       int c=it->second;
-      MCMCSamples << "\t" << it->first << "_pi" << "\t" << it->first <<"_sig2b ";
+      MCMCSamples <<"\t"<<  it->first << "_Pi" ;
+      for(int i=0;i<nTraits;i++)for(int j=0;j<=i;j++)
+				  MCMCSamples <<"\t"<<  it->first << "_sig2b["<< phenLabels[i+1] << "][" << phenLabels[j+1] << "]";
     }
-    MCMCSamples << "\tsig2e\tsig2g";
   }
   else{
-    MCMCSamples << "\tsig2b\tsig2e\tsig2g\tpi";
+    MCMCSamples <<"\tPi" ;
+    for(int i=0;i<nTraits;i++)for(int j=0;j<=i;j++)
+				MCMCSamples <<"\tsig2b["<< phenLabels[i+1] << "][" << phenLabels[j+1] << "]";
   }
   
+  for(int i=0;i<nTraits;i++)for(int j=0;j<=i;j++)
+			      MCMCSamples << "\tsig2e["<<  phenLabels[i+1] << "][" << phenLabels[j+1] << "]";
+  for(int i=0;i<nTraits;i++)for(int j=0;j<=i;j++)
+			      MCMCSamples << "\tsig2g["<< phenLabels[i+1] << "][" << phenLabels[j+1]  << "]";
+  MCMCSamples << "\trho";
   for(int iCl=0;iCl<nClass;iCl++) {
     if(classRandom[iCl] > -1){
-      MCMCSamples << "\tsig2_"+className[iCl];
+       for(int i=0;i<nTraits;i++)for(int j=0;j<=i;j++)
+			      MCMCSamples << "\tsig2_"+className[iCl] +"["<< phenLabels[i+1] << "][" << phenLabels[j+1] << "]";
     }
   }
-  for(int iCl=0;iCl<nClass;iCl++) {
+  for(int iCl=0;iCl<nClass;iCl++) 
     for(int l=0;l<nLevels[iCl];l++)
-      MCMCSamples << "\t" << className[iCl] + "_" + classValues[iCl][l];  
-  }
-  for(int iCv=0;iCv<nCovariate;iCv++) MCMCSamples << "\t" << covName[iCv];
+      for(int t=0;t<nTraits;t++)
+	MCMCSamples << "\t" << className[iCl] + "_" + classValues[iCl][l] +"_" + phenLabels[t+1];  
+  
+  for(int iCv=0;iCv<nCovariate;iCv++)
+    for(int t=0;t<nTraits;t++) MCMCSamples << "\t" << covName[iCv] +"_" + phenLabels[t+1];
   MCMCSamples << endl;
-  gHatResults << "ID\tgHat\tPEV"<< endl;
+
+  
+ 
+
+  
   vector<double> logPHaplo(nPheno);
 
   vector<int> dVec(nStates,0),dVec1(nStates,0),deltaZero(nStates,0),deltaOne(nStates,1),dsum(nStates,0),dsum2(nStates,0),deltaBase;
@@ -1038,14 +1180,17 @@ int main(int argc,char **argv){
   deltaStates.push_back(deltaZero);
   int computeLhsV=1;
 
-  vector<double> rhsV,lhsV,lhsVs;
-  rhsV.assign(nStates,0.0);
-  lhsV.assign(nComb,0.0);
-  lhsVs.assign(nStates,0.0);
-  vector<double> rhsVtmp=rhsV,lhsVtmp=lhsV,lhsVstmp=lhsVs,yDevtmp=y;
-  vector<vector<double> > lhsVArray(nQTLLoci,lhsV),lhsVsArray(nQTLLoci,lhsVs);
-  vector<vector<double> > rhsVThread,lhsVThread,lhsVsThread;
-  double *rhsVpt,*lhsVpt,*lhsVspt;
+  vector<Vector2d> rhsV;
+  vector<Matrix2d> lhsV,lhsVs;
+  rhsV.assign(nStates,Vector2d::Zero());
+  lhsV.assign(nComb,Matrix2d::Zero());
+  lhsVs.assign(nStates,Matrix2d::Zero());
+  vector<Vector2d> rhsVtmp=rhsV;
+  vector<Matrix2d> lhsVtmp=lhsV,lhsVstmp=lhsVs;
+  vector<Vector2d> yDevtmp=y;
+  vector<vector<Matrix2d> > lhsVArray(nQTLLoci,lhsV),lhsVsArray(nQTLLoci,lhsVs);
+  Vector2d *rhsVpt;
+  Matrix2d *lhsVpt,*lhsVspt;
   
 
   f.resize(nLoci,locusf);
@@ -1053,6 +1198,15 @@ int main(int argc,char **argv){
 
   for(int s=0;s<nSamples;s++){
     int printCnt=0;
+    vector<Matrix2d> Binv(nQTLClasses,Matrix2d::Zero());
+    vector<double> BinvLogDet(nQTLClasses);
+    double RinvLogDet;
+    Matrix2d Rinv=sig2e.inverse();
+    RinvLogDet=log(Rinv.determinant());
+    for(int c=0;c<nQTLClasses;c++) {
+      Binv[c]=sig2bVec[c].inverse();
+      BinvLogDet[c]=log(Binv[c].determinant());
+    }
     //
     // Fill in HaploVec ---------------------------------------------
     //
@@ -1070,7 +1224,6 @@ int main(int argc,char **argv){
 
       vector<int> vecFlipped(nPheno,0);
       vector <int>   XHaploNew(nQTLLoci);
-
 #pragma omp parallel for firstprivate(f,XHaploNew)
       for(int a=0;a<nPheno;a++){
 	int seq=phenSeq[a];
@@ -1140,7 +1293,7 @@ int main(int argc,char **argv){
 	  logPNewvsOld+=log(Pvec[ranClass]);
 	}
 	
-	double yDevNew=y[a]-mu;
+	Vector2d yDevNew=y[a]-mu;
 	for(int iCl=0;iCl<nClass;iCl++){
 	  yDevNew-=betaClass[iCl][posMatrix[iCl][a]];
 	}
@@ -1151,10 +1304,14 @@ int main(int argc,char **argv){
 	  int l=XHaploNew[locus];
 	  int I=HMM.stateI[l]; 
 	  int J=HMM.stateJ[l];
-	  yDevNew-=(qtlVec[locus].delta[I]+qtlVec[locus].delta[J])*qtlVec[locus].b;
+	  for(int t=0;t<nTraits;t++){
+	    if(qtlVec[locus].activeTrait[t])yDevNew(t)-=(qtlVec[locus].delta[I]+qtlVec[locus].delta[J])*qtlVec[locus].b(t);
+	  }
 	}
 	uSmp=u(gen);
-	if(s==0 || log(uSmp)<-.5*(yDevNew*yDevNew-yDev[a]*yDev[a])*rinverse[a]/sig2e){
+	yDevNew=yDevNew.cwiseProduct(rinverse[a]);
+	yDev[a]=yDev[a].cwiseProduct(rinverse[a]);
+	if(s==0 || log(uSmp)<-.5*(yDevNew.dot(Rinv*yDevNew)-yDev[a].dot(Rinv*yDev[a]))){
 	  for(long i=0;i<nQTLLoci;i++) {
 	    XHaplo[i][a]=XHaploNew[i];
 	    //XHaploT[a][i]=XHaploNew[i];
@@ -1197,18 +1354,18 @@ int main(int argc,char **argv){
 
 
     //double ssb=scaleB;
-    double sse=scaleRes,ssg=0;
-    vector<double> ssbVec(nQTLClasses);
+    Matrix2d sse=scaleRes,ssg=Matrix2d::Zero();
+    vector<Matrix2d> ssbVec(nQTLClasses);
     for(int c=0;c<nQTLClasses;c++){
-      ssbVec[c]=sig2bPriorVec[c]*(nusig2bVec[c]-2.);
+      ssbVec[c]=sig2bPriorVec[c]*(nusig2bVec[c]-((double) nTraits)-1.);
     }
     
     nQTL=activeLoci.size();
     yDev=y;
-    gHat.assign(nPheno,0.);
+    gHat.assign(nPheno,Vector2d::Zero());
 #pragma omp parallel for schedule(static) 
     for(int a=0;a<nPheno;a++){
-      double ysum=0;
+      Vector2d ysum=Vector2d::Zero();
       int seq=phenSeq[a];
       //#pragma omp parallel for reduction (+:ysum)
       for(long i=0;i<nQTL;i++){
@@ -1216,7 +1373,9 @@ int main(int argc,char **argv){
 	int seqClass=XHaplo[locus][a];
 	int I=HMM.stateI[seqClass];
 	int J=HMM.stateJ[seqClass];
-	ysum-=(qtlVec[locus].delta[I]+qtlVec[locus].delta[J])*qtlVec[locus].b;
+	for(int t=0;t<nTraits;t++) {
+	  if(qtlVec[locus].activeTrait[t])ysum(t)-=(qtlVec[locus].delta[I]+qtlVec[locus].delta[J])*qtlVec[locus].b(t);
+	}
       }
 
       ysum-=mu;
@@ -1242,10 +1401,10 @@ int main(int argc,char **argv){
 	if(i<(nQTLLoci-1)){
 	  if(qtlVec[i].active || qtlVec[i+1].active){
 	    int a0=qtlVec[i].active;
-	    double b=qtlVec[i].b;
+	    Vector2d b=qtlVec[i].b;
 	    dVec=qtlVec[i].delta;
 	    int a1=qtlVec[i+1].active;
-	    double b1=qtlVec[i+1].b;
+	    Vector2d b1=qtlVec[i+1].b;
 	    dVec1=qtlVec[i+1].delta;
 	    double ssSw;
 	    for(int a=0;a<nPheno;a++){
@@ -1256,17 +1415,24 @@ int main(int argc,char **argv){
 		  int J=HMM.stateJ[seqClass];
 		  int I1=HMM.stateI[seq1Class];
 		  int J1=HMM.stateJ[seq1Class];
-		  double yd=yDev[a];
+		  Vector2d yd=yDev[a];
 		  if(a0){
-		    yd-=((dVec[I1]+dVec[I1])-(dVec[I]+dVec[I]))*b;
+		    for(int t=0;t<nTraits;t++){
+		      if(qtlVec[i].activeTrait[t])yd(t)-=((dVec[I1]+dVec[I1])-(dVec[I]+dVec[I]))*b(t);
+		    }
 		  }
 		  if(a1){
-		    yd-=((dVec1[I]+dVec1[I])-(dVec1[I1]+dVec1[I1]))*b1;
+		    for(int t=0;t<nTraits;t++){
+		      if(qtlVec[i+1].activeTrait[t])yd(t)-=((dVec1[I]+dVec1[I])-(dVec1[I1]+dVec1[I1]))*b1(t);
+		    }
 		  }
-		  ssSw+=(yd*yd-yDev[a]*yDev[a])*rinverse[a];
+		  yd=yd.cwiseProduct(rinverse[a]);
+		  ssSw+=yd.dot(Rinv*yd);
+		  yd=yDev[a].cwiseProduct(rinverse[a]);
+		  ssSw-=yd.dot(Rinv*yd);
 		}
 	    }
-	    double probSw=exp(-.5*ssSw/sig2e);
+	    double probSw=exp(-.5*ssSw);
 	    if(u(gen)*(1.+probSw)<probSw){
 	      for(int a=0;a<nPheno;a++){
 	      	int seqClass=XHaplo[i][a];
@@ -1277,19 +1443,29 @@ int main(int argc,char **argv){
 		  int I1=HMM.stateI[seq1Class];
 		  int J1=HMM.stateJ[seq1Class];
 		  if(a0){
-		    yDev[a]-=((dVec[I1]+dVec[I1])-(dVec[I]+dVec[I]))*b;
+		    for(int t=0;t<nTraits;t++){
+		      if(qtlVec[i].activeTrait[t])yDev[a](t)-=((dVec[I1]+dVec[I1])-(dVec[I]+dVec[I]))*b(t);
+		    }
 		  }
 		  if(a1){
-		    yDev[a]-=((dVec1[I]+dVec1[I])-(dVec1[I1]+dVec1[I1]))*b1;
+		    for(int t=0;t<nTraits;t++){
+		      if(qtlVec[i+1].activeTrait[t])yDev[a](t)-=((dVec1[I]+dVec1[I])-(dVec1[I1]+dVec1[I1]))*b1(t);
+		    }
 		  }
 		}
 	      }
+	      vector<int>  activeTrait=qtlVec[i].activeTrait;
+	      int T=qtlVec[i].t;
 	      qtlVec[i].active=a1;
 	      qtlVec[i].b=b1;
+	      qtlVec[i].activeTrait=qtlVec[i+1].activeTrait;
+	      qtlVec[i].t=qtlVec[i+1].t;
 	      qtlVec[i].delta=dVec1;
 	      qtlVec[i+1].active=a0;
 	      qtlVec[i+1].b=b;
+	      qtlVec[i+1].activeTrait=activeTrait;
 	      qtlVec[i+1].delta=dVec;
+	      qtlVec[i+1].t=T;
 	    }
 	    
 	  }
@@ -1302,12 +1478,12 @@ int main(int argc,char **argv){
       int proposeActive=0;
       
       //double logAoverI=log((1.-pi)/pi);
-      double b=qtlVec[i].b;
+      Vector2d b=qtlVec[i].b;
       
-      rhsV.assign(nStates,0.0);
+      rhsV.assign(nStates,Vector2d::Zero());
       if(computeLhsV){
-	lhsV.assign(nComb,0.0);
-	lhsVs.assign(nStates,0.0);
+	lhsV.assign(nComb,Matrix2d::Zero());
+	lhsVs.assign(nStates,Matrix2d::Zero());
       }
       else{
 	lhsV=lhsVArray[i];
@@ -1316,21 +1492,24 @@ int main(int argc,char **argv){
       uSmp=u(gen);
       
       if(!active && uSmp>inactiveProposal) proposeActive=1;
-      
-      if(proposeActive || active || computeLhsV){
+      computeLhsV=1;
+      if(proposeActive || active /*|| computeLhsV*/){
 	dVec=qtlVec[i].delta;
 	
-	rhsVtmp.assign(nStates,0.0);
-	lhsVtmp.assign(nComb,0.0);
-	lhsVstmp.assign(nStates,0.0);
+	rhsVtmp.assign(nStates,Vector2d::Zero());
+	lhsVtmp.assign(nComb,Matrix2d::Zero());
+	lhsVstmp.assign(nStates,Matrix2d::Zero());
 	//yDevtmp.assign(nPheno,0.0);
-	
-	for(int a=0;a<nPheno;a++){
-	  int seqClass=XHaplo[i][a];
-	  int I=HMM.stateI[seqClass];
-	  int J=HMM.stateJ[seqClass];
-	  if(active){
-	    yDev[a]+=(dVec[I]+dVec[J])*b;
+	if(active){
+	  for(int t=0;t<nTraits;t++){
+	    if(qtlVec[i].activeTrait[t]){
+	      for(int a=0;a<nPheno;a++){
+		int seqClass=XHaplo[i][a];
+		int I=HMM.stateI[seqClass];
+		int J=HMM.stateJ[seqClass];
+		yDev[a](t)+=(dVec[I]+dVec[J])*b(t);
+	      }
+	    }
 	  }
 	}
 
@@ -1340,17 +1519,26 @@ int main(int argc,char **argv){
 	  lhsVpt=lhsVtmp.data();
 	  lhsVspt=lhsVstmp.data();
 	  //#pragma omp for schedule(static)
+	  
+	  Matrix2d RinvScaled=Matrix2d::Zero();
 	  for(int a=0;a<nPheno;a++){
-	    double ydev=yDev[a];
+	    Vector2d ydev(nTraits);
+	    //ydev=(Rinv*yDev[a].cwiseProduct(rinverse[a])).cwiseProduct(rinverse[a]);
+	    for(int ti=0;ti<nTraits;ti++){
+	      for(int tj=0;tj<nTraits;tj++){
+		RinvScaled(ti,tj)=rinverse[a][ti]*Rinv(ti,tj)*rinverse[a][tj];
+	      }
+	    }
+	    ydev=RinvScaled*yDev[a];
 	    int seqClass=XHaplo[i][a];
 	    int I=HMM.stateI[seqClass];
 	    int J=HMM.stateJ[seqClass];
-	    *(rhsVpt+I)+=ydev*rinverse[a];
-	    *(rhsVpt+J)+=ydev*rinverse[a];
+	    *(rhsVpt+I)+=ydev;
+	    *(rhsVpt+J)+=ydev;
 	    if(computeLhsV){
-	      *(lhsVspt+I)+=rinverse[a];
-	      *(lhsVspt+J)+=rinverse[a];
-	      *(lhsVpt+seqClass)+=2.0*rinverse[a];
+	      *(lhsVspt+I)+=RinvScaled;
+	      *(lhsVspt+J)+=RinvScaled;
+	      *(lhsVpt+seqClass)+=2.0*RinvScaled;
 	    }
 	  }
 
@@ -1358,20 +1546,18 @@ int main(int argc,char **argv){
 	  {
 	    for(int I=0;I<nStates;I++){
 	      rhsV[I]+=rhsVtmp[I];
-	      
-	      //  cout << "rhsV " << I << "=" << rhsV[I] <<endl;
+	      // cout << "rhsV " << I << "=" << rhsV[I] <<endl;
 	    } 
 	    if(computeLhsV){
 	      for(int I=0;I<nStates;I++){
 		lhsVs[I]+=lhsVstmp[I];
 		
-		
-		//   cout << "lhsVs " << I << "=" << lhsVs[I] <<endl;
+		//  cout << "lhsVs " << I << "=" << lhsVs[I] <<endl;
 	      }
 	      for(int l=0;l<nComb;l++){
 		lhsV[l]+=lhsVtmp[l];
 		
-		//  cout << "lhsV " << l << "=" << lhsV[l] <<endl;
+		// cout << "lhsV " << l << "=" << lhsV[l] <<endl;
 	      }
 	    }
 	  }
@@ -1390,15 +1576,15 @@ int main(int argc,char **argv){
 	double maxAoverI=0.;
 	double psumP=0,pInactiveP=1,ptotP=0;
 	double maxAoverIP=0.;
-	int SD=0;
+	int SD=0,T=0,SDT=0;
 	if(!active) qtlVec[i].delta=deltaZero;
 	int QTLClass=QTLClassVec[i];
 	switch(deltaSampler){
 	case 3:
 	case 1:
 	  
-	  calcDeltaProposalFull(sig2e,sig2bVec[QTLClass],qtlVec[i].delta,deltaStates,
-				dVec,rhsV,lhsV,lhsVs,piClassVec[QTLClass],nDeltaStates,nStates,
+	  calcDeltaProposalFullX(sig2e,sig2bVec[QTLClass],Rinv,Binv[QTLClass],qtlVec[i].delta,deltaStates,
+				dVec,rhsV,lhsV,lhsVs,piClassVec[QTLClass],rho,nDeltaStates,nStates,
 				pInactive,maxAoverI,AoverIVec,psum);
 	  
 	  ptot=psum;
@@ -1409,11 +1595,13 @@ int main(int argc,char **argv){
 	    //Propose Delta
 	    uSmp=u(gen);
 	    uSmp*=psum;
-	    int sd;
-	    for(sd=0; uSmp>AoverIVec[sd]   && sd<nDeltaStates ;sd++){
-	      uSmp-=AoverIVec[sd];
+	    int sdt,sd,T;
+	    for(sdt=0; uSmp>AoverIVec[sdt]   && sdt<nDeltaStates*(nTraits+1) ;sdt++){
+	      uSmp-=AoverIVec[sdt];
 	    }
-	    if(sd< nDeltaStates){
+	    if(sdt< nDeltaStates*(nTraits+1)){
+	      SD=sdt/(nTraits+1);
+	      T=sdt%(nTraits+1);
 	      deltaBase=deltaStates[sd];
 	    }
 	    else{
@@ -1440,9 +1628,11 @@ int main(int argc,char **argv){
 	    cout << sig2bVec[QTLClass] << endl;
 	    cout << piClassVec[QTLClass] << endl;
 	  }
-	  calcDeltaProposal(sig2e,sig2bVec[QTLClass],qtlVec[i].delta,
-			    dVec,rhsV,lhsV,lhsVs,piClassVec[QTLClass],nDeltaStates,nStates,
-			    pInactive,maxAoverI,AoverIVec,psum);
+	  
+	  //cout << QTLClass << " " << Binv[0](0,0) << endl;
+	  calcDeltaProposalX(sig2e,sig2bVec[QTLClass],Rinv,Binv[QTLClass],qtlVec[i].delta,
+			    dVec,rhsV,lhsV,lhsVs,piClassVec[QTLClass],rho,nDeltaStates,nStates,
+			    pInactive,maxAoverI,AoverIVec,psum,RinvLogDet,BinvLogDet[QTLClass]);
 	  
 	 
 	  ptot=psum;
@@ -1456,21 +1646,25 @@ int main(int argc,char **argv){
 	    //Propose Delta
 	    uSmp=u(gen);
 	    uSmp*=psum;
-	    int sd;
-	    for(sd=0; uSmp>AoverIVec[sd]   && sd<nStates ;sd++){
-	      uSmp-=AoverIVec[sd];
+	    int sdt,sd,t;
+	    for(sdt=0; uSmp>AoverIVec[sdt]   && sdt<(nStates+1)*(nTraits+1) ;sdt++){
+	      uSmp-=AoverIVec[sdt];
 	    }
 	    deltaBase=qtlVec[i].delta;
+	    
+	    sd=sdt/(nTraits+1);
+	    t=sdt%(nTraits+1);
 	    if(sd != nStates){
 	      deltaBase[sd]=1-qtlVec[i].delta[sd];
 	    }
 	    SD=sd;
+	    T=t;
 	  }
 	  
-	  
-	  calcDeltaProposal(sig2e,sig2bVec[QTLClass],deltaBase,
-			    dVec,rhsV,lhsV,lhsVs,piClassVec[QTLClass],nDeltaStates,nStates,
-			    pInactiveP,maxAoverIP,AoverIVecP,psumP);
+	  //cout << QTLClass << " " << Binv[0](0,0) << endl;
+	  calcDeltaProposalX(sig2e,sig2bVec[QTLClass],Rinv,Binv[QTLClass],deltaBase,
+			     dVec,rhsV,lhsV,lhsVs,piClassVec[QTLClass],rho,nDeltaStates,nStates,
+			     pInactiveP,maxAoverIP,AoverIVecP,psumP,RinvLogDet,BinvLogDet[QTLClass]);
 	  ptotP=psumP;
 	  if(proposeActive)ptotP+=pInactiveP;
 	  break;
@@ -1479,16 +1673,7 @@ int main(int argc,char **argv){
 	  exit(313);
 	}
 	
-	if(0) {
-	  if(deltaSampler==1) AoverIVecP=AoverIVec;
-	  cout << i << " PA "<< proposeActive << " " << psum << " "<< ptot << " " << psumP << " " << ptotP << endl;
-	  for(int I=0;I<nStates;I++) cout << qtlVec[i].delta[I] << " " ;
-	  cout << "    "  << SD << " " <<log(AoverIVec[SD])+maxAoverI << " " << log(pInactive)+maxAoverI;
-	  cout << " " <<log(AoverIVec[nStates])+maxAoverI  << " ";
-	  for(int I=0;I<nStates;I++) cout << deltaBase[I] << " " ;
-	  cout << " " <<log(AoverIVecP[nStates])+maxAoverIP << " " << log(pInactiveP)+maxAoverIP ;
-	  cout << " " <<log(AoverIVecP[SD])+maxAoverIP << endl ;
-	}
+
 	
 	
 	int accept=0;
@@ -1504,76 +1689,127 @@ int main(int argc,char **argv){
 	  else {
 	    nRejectI2A++;
 	    qtlVec[i].delta=deltaZero;
-	    qtlVec[i].b=0;
+	    qtlVec[i].activeTrait.assign(nTraits,0);
+	    qtlVec[i].b.setZero();
 	  }
 	}
 	if(accept || active){	
 	  if(accept && !proposeActive){
 	    qtlVec[i].active=0;
-	    qtlVec[i].b=0;
+	    qtlVec[i].b.setZero();
 	    qtlVec[i].delta=deltaZero;
+	    qtlVec[i].activeTrait.assign(nTraits,0);
 	  }
-	  else{
+	  else{ //
 	    qtlVec[i].active=1;
 	    activeLoci.push_back(i);
 	    nowActive=1;
-	    if(accept) qtlVec[i].delta=deltaBase;
+	    if(accept) {
+	      qtlVec[i].delta=deltaBase;
+	      if(T< nTraits){
+		qtlVec[i].activeTrait.assign(nTraits,0);
+		qtlVec[i].activeTrait[T]=1;
+	      }
+	      else{
+		qtlVec[i].activeTrait.assign(nTraits,1);
+	      }
+	      qtlVec[i].t=T;
+	    }
 	    dVec=qtlVec[i].delta;
+	    T=qtlVec[i].t;
+	    Vector2d RHS=Vector2d::Zero();
+	    Matrix2d LHS=Matrix2d::Zero();
 	    double sumXY,sumXX;
 	    sumXY=0;
-	    sumXX=sig2e/sig2bVec[QTLClass];
+	    sumXX=0;
 	    int IJ=0;
 	    for(int I=0;I<nStates;I++){
 	      if(dVec[I]) {
-		sumXY+=rhsV[I];
-		sumXX+=lhsVs[I];
+		if(T< nTraits){
+		  LHS(T,T)+=lhsVs[I](T,T);
+		  RHS(T)+=rhsV[I](T);
+		}
+		else{
+		  LHS+=lhsVs[I];
+		  RHS+=rhsV[I];
+		}
 	      }
 	      for(int J=0;J<=I;J++,IJ++){
-		if(dVec[I]&& dVec[J]) sumXX+=lhsV[IJ];
+		if(dVec[I]&& dVec[J]) {
+		  if(T< nTraits){
+		    LHS(T,T)+=lhsV[IJ](T,T);
+		  }
+		  else{
+		    LHS+=lhsV[IJ];
+		  }
+		}
 	      }
 	    }
+	   
+	    Matrix2d LHSinv=(LHS+Binv[QTLClass]).inverse();
 	    
-	    b=sumXY/sumXX+Z(gen)*sqrt(sig2e/sumXX);
-	    //if(printCnt++<5) cout << "b[" << i << "]" << sumXX/sig2e << " " << sumXY/sig2e << " " << b<<endl;
+	    LLT<Matrix2d> llt(LHSinv);
+	    Matrix2d L=llt.matrixL(); 
+	    //b=LHSinv*RHS;
+	    //cout << "b " << LHS(0,0) << " " << RHS(0) << " " << b(0) << endl;
+	    
+	    Zvec(zVec);
+	    b=LHSinv*RHS+L*zVec;
+	    /*
+	    for(int tj=0;tj<nTraits;tj++) {
+	      val=Z(gen);
+	      for(int ti=tj;ti<nTraits;ti++){
+		b[ti]+=L(ti,tj)*val;
+	      }
+	    }
+	    */
+	    
+	  
 	    //sample b
 	    
 	    qtlVec[i].b=b;
-	    ssbVec[QTLClass]+=b*b;
+	    ssbVec[QTLClass]+=b*b.transpose();
+	    
+	    //if(printCnt++<5) cout<<  "b["<<i<<"] " <<  b << "\n LHS \n" << LHS << "\n Binv \n" << Binv[QTLClass] << "\n L \n" << L << "\n Z \n" << zVec << "\n RHS \n" << RHS << "\n ssbVec\n"<<  ssbVec[QTLClass] <<endl;
 	    nQTLVec[QTLClass]++;
 	    yDevpt=yDev.data();
             gHatpt=gHat.data();
 	    //#pragma omp parallel for schedule(static)
-	    for(int a=0;a<nPheno;a++){
-	      //int seq=phenSeq[a];
-	      int seqClass=XHaplo[i][a];
-	      int I=HMM.stateI[seqClass];
-	      int J=HMM.stateJ[seqClass];
-	      *(yDevpt+a)-=(dVec[I]+dVec[J])*b;
-	      *(gHatpt+a)+=(dVec[I]+dVec[J])*b;
+	    for(int t=0;t<nTraits;t++){
+	      if(T==t || T==nTraits){
+		for(int a=0;a<nPheno;a++){
+		  //int seq=phenSeq[a];
+		  int seqClass=XHaplo[i][a];
+		  int I=HMM.stateI[seqClass];
+		  int J=HMM.stateJ[seqClass];
+		  yDev[a](t)-=(dVec[I]+dVec[J])*b(t);
+		  gHat[a](t)+=(dVec[I]+dVec[J])*b(t);
+		}
+	      }
 	    }
 	    
 	}
 	}
-      }
+    }
       
       //if(qtlVec[i].active && !nowActive) cout << "Switch locus "<< i << " " << qtlVec[i].active << "=>" << nowActive << endl;
       
       
       
-      if(s>=nBurnIn)qtlSumVec[i].updateSum(qtlVec[i]);
+      if(s>=nBurnIn)qtlSumVec[i].updateSum(qtlVec[i],nTraits);
       
     }
 
     //Calc sig2g
-    ssg=0;
-    double sumg=0;
+    ssg.setZero();
+    Vector2d sumg(Vector2d::Zero());
     //#pragma omp parallel for schedule(static) reduction(+:ssg,sumg)
     for(int a=0;a<nPheno;a++) {
-      ssg+=gHat[a]*gHat[a];
+      ssg+=gHat[a]*gHat[a].transpose();
       sumg+=gHat[a];
     }
     sumg/=(double) nPheno;
-    sig2g=ssg/((double) nPheno)-(sumg*sumg);
+    sig2g=ssg/((double) nPheno)-(sumg*sumg.transpose());
     
     //update gHatSum
     if(s>=nBurnIn){
@@ -1581,7 +1817,7 @@ int main(int argc,char **argv){
       for(int a=0;a<nPheno;a++) {
 	gHat[a]-=sumg;
 	gHatSum[a]+=gHat[a];
-	gHatSumSq[a]+=gHat[a]*gHat[a];
+	gHatSumSq[a]+=gHat[a]*gHat[a].transpose();
       }
     }
 
@@ -1601,50 +1837,86 @@ int main(int argc,char **argv){
     
     computeLhsV=0;
     //update mu;
-    double sumXY=0,sumXX=.0001;
+    Vector2d sumXY=Vector2d::Zero();
+    Matrix2d sumXX=Rinv*0.0001;
     //#pragma omp parallel for reduction (+:sumXY,sumXX) schedule(static)
     for(int a=0;a<nPheno;a++){
-      sumXY+=rinverse[a]*yDev[a];
-      sumXX+=rinverse[a];
+      yDev[a]+=mu;
+      for(int ti=0;ti<nTraits;ti++){
+	for(int tj=0;tj<nTraits;tj++){
+	  sumXY(ti)+=rinverse[a](ti)*Rinv(ti,tj)*rinverse[a](tj)*yDev[a](tj);
+	  sumXX(ti,tj)+=rinverse[a](ti)*Rinv(ti,tj)*rinverse[a](tj);
+	}
+      }
     }
-    double deltaMu=sumXY/sumXX+Z(gen)*sqrt(sig2e/sumXX);
+    Matrix2d sumXXinv=sumXX.inverse();
+    LLT<Matrix2d> L(sumXXinv);
+    Zvec(zVec);
+    Vector2d deltaMu=sumXXinv*sumXY+L.matrixL()*zVec;
+
+
     yDevpt=yDev.data();
     //#pragma omp parallel for schedule(static)
     for(int a=0;a<nPheno;a++) *(yDevpt+a)-=deltaMu;
-    mu+=deltaMu;
+    // cout << "mu " << mu << " " << deltaMu<< " " << sumXY << " " << sumXX << " " << zVec  << endl;
+    mu=deltaMu;
     
     //update Class effects;
     
+    Matrix2d Dinv=Matrix2d::Zero();
     for(int iCl=0;iCl<nClass;iCl++){
-      double lambdaC=.001;
-      if(classRandom[iCl]>-1) lambdaC=sig2e/sig2r[classRandom[iCl]];
-      vector<double> sumXY(nLevels[iCl],0.0),sumXX(nLevels[iCl],lambdaC);
+      if(classRandom[iCl]>-1) {
+	Dinv=sig2r[classRandom[iCl]].inverse();
+      }
+      else{
+	Dinv=Rinv*0.0001;
+      }
+      vector<Matrix2d> sumXX(nLevels[iCl],Dinv);
+      vector<Vector2d> sumXY(nLevels[iCl],Vector2d::Zero());
       //cout << "iCl " << iCl << " lambdaC " << lambdaC<< endl;` 
-      vector<double> deltaBeta(nLevels[iCl]);
+      //vector<Vector2d> deltaBeta(nLevels[iCl]);
       for(int a=0;a<nPheno;a++){
 	int l=posMatrix[iCl][a];
 	yDev[a]+=betaClass[iCl][l];
-	sumXY[l]+=rinverse[a]*yDev[a];
-	sumXX[l]+=rinverse[a];
+	for(int ti=0;ti<nTraits;ti++){
+	  for(int tj=0;tj<nTraits;tj++){
+	    sumXY[l](ti)+=rinverse[a](ti)*Rinv(ti,tj)*rinverse[a](tj)*yDev[a](tj);
+	    sumXX[l](ti,tj)+=rinverse[a](ti)*Rinv(ti,tj)*rinverse[a](tj);
+	  }
+	}
+	
       }
       for(int l=0;l<nLevels[iCl];l++){
-	betaClass[iCl][l]=sumXY[l]/sumXX[l]+Z(gen)*sqrt(sig2e/sumXX[l]);
+	Matrix2d sumXXinv=sumXX[l].inverse();
+	LLT<Matrix2d> L(sumXXinv);
+	Zvec(zVec);
+	betaClass[iCl][l]=sumXXinv*sumXY[l]+L.matrixL()*zVec;
       }
       //#pragma omp parallel for schedule(static)
       for(int a=0;a<nPheno;a++)  yDev[a]-=betaClass[iCl][posMatrix[iCl][a]];
     }
     //update Covariate effects;
     for(int iCv=0;iCv<nCovariate;iCv++){
-      double sumXY=0,sumXX=0;
+      Vector2d sumXY=Vector2d::Zero();
+      Matrix2d sumXX=Matrix2d::Zero();
       //#pragma omp parallel for schedule(static) reduction(+:sumXX,sumXY)
       for(int a=0;a<nPheno;a++){
-	sumXY+=rinverse[a]*yDev[a]*valMatrix[iCv][a];
-	sumXX+=rinverse[a]*valMatrix[iCv][a]*valMatrix[iCv][a];
+	yDev[a]+=valMatrix[iCv][a]*betaCov[iCv];
+	for(int ti=0;ti<nTraits;ti++){
+	  for(int tj=0;tj<nTraits;tj++){
+	    sumXY(ti)+=valMatrix[iCv][a]*rinverse[a](ti)*Rinv(ti,tj)*rinverse[a](tj)*yDev[a](tj);
+	    sumXX(ti,tj)+=valMatrix[iCv][a]*rinverse[a](ti)*Rinv(ti,tj)*rinverse[a](tj)*valMatrix[iCv][a];
+	  }
+	}
       }
-      double deltaBeta=sumXY/sumXX+Z(gen)*sqrt(sig2e/sumXX);
+      
       //#pragma omp paralllel for schedule(static)
+      Matrix2d sumXXinv=sumXX.inverse(); 
+      LLT<Matrix2d> L(sumXXinv);
+      Zvec(zVec);
+      Vector2d deltaBeta=sumXXinv*sumXY+L.matrixL()*zVec;
       for(int a=0;a<nPheno;a++) yDev[a]-=deltaBeta*valMatrix[iCv][a];
-      betaCov[iCv]+=deltaBeta;
+      betaCov[iCv]=deltaBeta;
     }
 
   
@@ -1653,16 +1925,13 @@ int main(int argc,char **argv){
       int iR=classRandom[iCl];
       if(iR>-1){
 	nuTilde=((double)betaClass[iCl].size())+nusig2r[iR];
-	double ssr=sig2rPrior[iR]*(nusig2r[iR]-2.);
+	Matrix2d ssr=sig2rPrior[iR]*(nusig2r[iR]-1.-((double) nTraits));
 	for(int l=0;l<nLevels[iCl];l++)  {
-	  ssr+=betaClass[iCl][l]*betaClass[iCl][l];
+	  ssr+=betaClass[iCl][l]*betaClass[iCl][l].transpose();
 	}
-	//	double X2;
-	//	gamma_distribution<double> sig2rGamma(nuTilde/2.0,1.);
-	//	X2=2.*sig2rGamma(gen); //Chi-square;
-	//	sig2r[iR]=ssr/X2;
-	gamma_distribution<double> sig2rGamma(nuTilde/2.0,2./ssr);
-	sig2r[iR]=1./sig2rGamma(gen);
+	Matrix2d wMat;
+	rWishartX(ssr.inverse(),nuTilde,wMat);
+	sig2r[iR]=wMat.inverse();
 	//	cout << "ssr " << ssr << " iR " <<  iR << " Scale " << sig2rPrior[iR]*(nusig2r[iR]-2.) << " nuTilde " << nuTilde << endl;
       }
     }
@@ -1670,190 +1939,76 @@ int main(int argc,char **argv){
     //update sig2e;
     nuTilde=((double) nPheno)+nusig2e;
     //cout << "sse " << sse << endl; 
-    double ssePart=0,ssMax=0,ss;
+    Matrix2d ssePart=Matrix2d::Zero();
+    //#pragma omp parallel for schedule(static) reduction(+:ssePart)
+    double ssMax=0,ydMax,rinvMax;
     int aMax;
-    //#pragma omp parallel for schedule(static) reduction(+:ssePart) 
+    Matrix2d ss;
+    Vector2d yd;
     for(int a=0;a<nPheno;a++)  {
-      ss=yDev[a]*yDev[a]*rinverse[a];
+      yd=yDev[a].cwiseProduct(rinverse[a]);
+      ss=yd*yd.transpose();
       ssePart+=ss;
-      if(ss>ssMax){
+      if(ss(0,0) > ssMax){
+	ssMax=ss(0,0);
 	aMax=a;
-	ssMax=ss;
       }
+      // if(a<2 || (a<1150 and a>1147)) cout << a <<" sse Calc " << yDev[a](0) << " * " << rinverse[a](0) << " = " << yd << " ss=" << ss << " ssePart=" << ssePart(0,0) << endl;
     }
-    
+    //cout << "aMax " << aMax << " " << yDev[aMax](0) << " " << rinverse[aMax](0) << " " << ssMax << endl;
     sse+=ssePart;
-    //cout << "aMax " << aMax << " " << yDev[aMax] << " " << rinverse[aMax] << " " << ssMax << endl;
-    //cout << sse << " "<< nuTilde  << " " <<1./sig2e << " " <<  sig2e << endl;
-    
-
-    //    double X2;
-    //    gamma_distribution<double> sig2eGamma(nuTilde/2.0,1.);
-    //    X2=2.*sig2eGamma(gen); //Chi-square;
-    //    sig2e=sse/X2;
-    gamma_distribution<double> sig2eGamma(nuTilde/2.0,2./sse);
-    sig2e=1./sig2eGamma(gen);
-    //cout << "Sig2E " << sse << " " << nuTilde << " " << X2 << " " << sig2e << endl; 
+    rWishartX(sse.inverse(),nuTilde,Rinv);
+    sig2e=Rinv.inverse(); 
+    //cout << "Sig2E " << sse(0,0) << " " << nuTilde << " " << Rinv(0,0) << " " << sig2e(0,0) << endl; 
 
     //update sig2b;
     for(int c=0;c<nQTLClasses;c++){
-      //nQTL=activeLoci.size();
+      
       nuTilde=((double) nQTLVec[c])+nusig2bVec[c];
-      //    gamma_distribution<double> sig2bGamma(nuTilde/2.0,1.);
-      //    X2=2.*sig2bGamma(gen); //Chi-square;
-      //    sig2b=ssb/X2;
-      gamma_distribution<double> sig2bGamma(nuTilde/2.0,2./ssbVec[c]);
-      sig2bVec[c]=1./sig2bGamma(gen);
+      Matrix2d wMat;
+      rWishartX(ssbVec[c].inverse(),nuTilde,wMat);
+      sig2bVec[c]=wMat.inverse();
+      // cout << c << " nuTidle=" << nuTilde << "=" << nQTLVec[c] << "+" << nusig2bVec[c] << "\n ssbVec=" << ssbVec[c] << "\n sig2b=" << sig2bVec[c] << endl;
     }
     if(s>=nBurnIn){
-      windowVec.assign(nQTLLoci,0);
-      for(int i=0;i<nQTLLoci;i++){
-	if(qtlVec[i].active){
-	  int start=lociMap[i].start;
-	  int end=lociMap[i].stop;
-	  for(int j=start;j<=end;j++) windowVec[j]=1;
+      for(int t=0;t<nTraits;t++){
+	windowVec.assign(nQTLLoci,0);
+	for(int i=0;i<nQTLLoci;i++){
+	  if(qtlVec[i].active && qtlVec[i].activeTrait[t]){
+	    int start=lociMap[i].start;
+	    int end=lociMap[i].stop;
+	    for(int j=start;j<=end;j++) windowVec[j]=1;
+	  }
 	}
-      }
-      for(int i=0;i<nQTLLoci;i++) {
-	if(windowVec[i]) windowSumVec[i]++;
+	for(int i=0;i<nQTLLoci;i++) {
+	  if(windowVec[i]) windowSumVec[i][t]++;
+	}
       }
     }
-    if(enableSwapActive){
-      
-      
-      for(long i=(s%1);i<(nQTLLoci-1);i+=2){
-	int QTLClass=QTLClassVec[i];
-	int QTLClass1=QTLClassVec[i+1];
-	if(qtlVec[i].active != qtlVec[i+1].active){
-	  int a0=qtlVec[i].active;
-	  int a1=qtlVec[i+1].active;
-	  double b;
-	  if(a0){
-	    dVec=qtlVec[i].delta;
-	    b=qtlVec[i].b;
-	  }
-	  else{
-	    dVec=qtlVec[i+1].delta;
-	    b=qtlVec[i+1].b;
-	  }
-	  double rhs=0.,rhs1=0.,lhs=sig2e/sig2bVec[QTLClass],lhs1=sig2e/sig2bVec[QTLClass1],ssSw=0.;
-	  for(int a=0;a<nPheno;a++){
-	    int seqClass=XHaplo[i][a];
-	    int seq1Class=XHaplo[i+1][a];
-	    //if(seqClass!=seq1Class){
-	      int I=HMM.stateI[seqClass];
-	      int J=HMM.stateJ[seqClass];
-	      int I1=HMM.stateI[seq1Class];
-	      int J1=HMM.stateJ[seq1Class];
-	      double yd=yDev[a];
-	      if(a0) {
-		yd-=((dVec[I1]  +dVec[J1])-(dVec[I]  +dVec[J]))*b;
-		yDev[a]+=(dVec[I]  +dVec[J])*b;
-	      }
-	      else{		
-		yd+=((dVec[I1]  +dVec[J1])-(dVec[I]  +dVec[J]))*b;		
-		yDev[a]+=(dVec[I1]  +dVec[J1])*b;
-	      }
-	      //ssSw+=(yd*yd-yDev[a]*yDev[a])*rinverse[a];
-	      rhs+=rinverse[a]*yDev[a]*(dVec[I]  +dVec[J]);
-	      lhs+=rinverse[a]*(dVec[I]  +dVec[J])*(dVec[I]  +dVec[J]);
-	      rhs1+=rinverse[a]*yDev[a]*(dVec[I1]  +dVec[J1]);
-	      lhs1+=rinverse[a]*(dVec[I1]  +dVec[J1])*(dVec[I1]  +dVec[J1]);
-	      //}
-	  }
-	  rhs/=sig2e;
-	  rhs1/=sig2e;
-	  lhs/=sig2e;
-	  lhs1/=sig2e;
-	  //double probSw=exp(-0.5*ssSw/sig2e);
-	  double prob0=exp(0.5*(rhs*rhs/lhs-rhs1*rhs1/lhs1))*sqrt(lhs1/lhs)*(piClassVec[QTLClass]/piClassVec[QTLClass1]);
-	  
-	  if(u(gen) < prob0/(1.+prob0)){
-	    a0=1;
-	    b=rhs/lhs+Z(gen)/sqrt(lhs);
-	    qtlVec[i].active=1;
-	    qtlVec[i].delta=dVec;
-	    qtlVec[i].b=b;
-	    
-	    a1=0;
-	    qtlVec[i+1].active=0;
-	    qtlVec[i+1].delta=deltaZero;
-	    qtlVec[i+1].b=0.;
-	  }
-	  else{
-	    a0=0;
-	    qtlVec[i].active=0;
-	    qtlVec[i].delta=deltaZero;
-	    qtlVec[i].b=0.;
-	    
-	    a1=1;
-	    b=rhs1/lhs1+Z(gen)/sqrt(lhs1);
-	    qtlVec[i+1].active=1;
-	    qtlVec[i+1].delta=dVec;
-	    qtlVec[i+1].b=b;
-	  }
-
-	    
-	  for(int a=0;a<nPheno;a++){
-	    
-	    int seqClass=XHaplo[i][a];
-	    int seq1Class=XHaplo[i+1][a];
-	    int I=HMM.stateI[seqClass];
-	    int J=HMM.stateJ[seqClass];
-	    int I1=HMM.stateI[seq1Class];
-	    int J1=HMM.stateJ[seq1Class];
-	    if(a1) {
-	      yDev[a]-=(dVec[I1]  +dVec[J1])*b;
-	    }
-	    else{		
-	      yDev[a]-=(dVec[I]  +dVec[J])*b;
-	    }
-	  }
-	}
-      }
-
-      int nQTLOld=activeLoci.size();
-      //nQTL=0;
-      activeLoci.resize(0);
-      for(long i=0;i<nQTLLoci;i++){
-	if(qtlVec[i].active) {
-	  activeLoci.push_back(i);
-	  //nQTL++;
-	}
-      }
-      nQTL=activeLoci.size();
-      long sumAcLoc1=0;
-      
-      
-      if(nQTL != nQTLOld) {
-      cout << "nQTL  " << nQTLOld << "->" << nQTL << " " << activeLoci.size() << " " << nQTLLoci <<endl;
-      exit(999);
-      }
-      
-     } // End enableSwapActive
 
 
     if((s % printFreq)==0){
       cout << endl;
       cout << "Sample: " << s << endl;
+      cout << " Rho: " << rho <<endl;
       if(QTLMap){
 	for(auto it=QTLClasses.begin();it !=QTLClasses.end();it++){
 	  int c=it->second;
 	  cout << setw(10) << it->first << " ";
-	  cout << it->first << " " << setprecision(8) << "Pi: " << piClassVec[c] <<" Sig2b: " << sig2bVec[c] << endl;
+	  cout << it->first << " " << setprecision(8) << " Pi: " << piClassVec[c] <<"\n Sig2b: \n" << sig2bVec[c] << endl;
 	}
-	cout << setprecision(8) << " Sig2e: " << sig2e << " Sig2g: " << sig2g;
+	cout << setprecision(8) << "\n Sig2e: \n" << sig2e << "\n Sig2g: \n" << sig2g;
       }
       else{
-	cout << setprecision(8) << "Pi: " << piClassVec[0] <<" Sig2b: " << sig2bVec[0] << " Sig2e: " << sig2e << " Sig2g: " << sig2g;
+	cout << setprecision(8) << " Pi: " << piClassVec[0] <<"\n Sig2b: \n" << sig2bVec[0] << "\n Sig2e: \n" << sig2e << "\n Sig2g: \n" << sig2g;
       }
       for(int iCl=0;iCl<nClass;iCl++) {
 	if(classRandom[iCl] > -1){
-	  cout << " Sig2_"+className[iCl]+": " << sig2r[classRandom[iCl]];
+	  cout << "\n Sig2_"+className[iCl]+": \n" << sig2r[classRandom[iCl]];
 	}
       }
       cout << endl;
-      cout << "mu " << mu << endl;
+      cout << " mu \n" << mu << endl;
       cout << "number Active: " <<  nQTL << " Number Rejected A2I: " << nRejectA2I<< " Number Rejected I2A: " << nRejectI2A << endl;
       int nQTLPrint=100;
       if(nQTLPrint>nQTL) nQTLPrint=nQTL;
@@ -1870,40 +2025,53 @@ int main(int argc,char **argv){
       
       cout << endl <<endl;
       if(s%outputFreq==0) {
-	MCMCSamples << s << "\t" << mu+sumg ;
+	MCMCSamples << s ;
+	printVector(MCMCSamples,mu+sumg,"\t") ;
 	if(QTLMap){
 	  for(auto it=QTLClasses.begin();it !=QTLClasses.end();it++){
 	    int c=it->second;
-	    MCMCSamples << "\t" << piClassVec[c] << "\t" << sig2bVec[c];
+	    MCMCSamples << "\t" << piClassVec[c]  ;
+	    printLower(MCMCSamples,sig2bVec[c],"\t");
 	  }
-	  MCMCSamples << "\t" <<sig2e <<"\t" << sig2g;
+	  cout << "\t" <<sig2e <<"\t" << sig2g;
 	}
 	else{
-	  MCMCSamples <<"\t" << sig2bVec[0]  << "\t" <<sig2e <<"\t" << sig2g<< "\t" << piClassVec[0];
+	  MCMCSamples << "\t" << piClassVec[0]  ;
+	  printLower(MCMCSamples,sig2bVec[0],"\t");	  
 	}
+
 	
+	printLower(MCMCSamples,sig2e,"\t");
+	printLower(MCMCSamples,sig2g,"\t");
+	MCMCSamples << "\t" << rho;
 	for(int iCl=0;iCl<nClass;iCl++) {
 	  if(classRandom[iCl] > -1){
-	    MCMCSamples << "\t" << sig2r[classRandom[iCl]];
+	    printLower(MCMCSamples,sig2r[classRandom[iCl]],"\t");
 	  }
 	}
 	for(int iCl=0;iCl<nClass;iCl++) {
 	  for(int l=0;l<nLevels[iCl];l++)
-	    MCMCSamples << "\t" << betaClass[iCl][l];  
+	    for(int t=0;t<nTraits;t++)
+	      MCMCSamples << "\t" << betaClass[iCl][l][t];  
 	}
-	for(int iCv=0;iCv<nCovariate;iCv++) MCMCSamples << "\t" << betaCov[iCv];
+	for(int iCv=0;iCv<nCovariate;iCv++) printVector(MCMCSamples,betaCov[iCv],"\t");
 	MCMCSamples << endl; 
       }
     }
   }
-
-  QTLResults << "Loci\tName\tChrom\tPos\tmodelFreq\tb\twindowFreq";
-  for(int l=0;l<nStates;l++) QTLResults << "\tDelta" << l ;
+  
+  QTLResults.open(QTLName);
+  QTLResults << "Loci\tName\tChrom\tPos\tmodelFreq\tAll";
+  for(int t=0;t<nTraits;t++) {
+    QTLResults << "\twindowFreq" << t;
+    QTLResults << "\tb" << t;
+    QTLResults << "\tActive" << t ;
+    for(int l=0;l<nStates;l++) QTLResults << "\tDelta" << t << "_" << l ;
+  }
   //for(int l=0;l<nStates;l++) QTLResults << "\thaploFreq" << l ;
   //for(int l=0;l<nStates;l++) QTLResults << "\thaploTemplate" << l ;
-
   QTLResults << endl;
-
+  
   double numSampled;
   numSampled=(double)(nSamples-nBurnIn);
   for(long i=0;i<nLoci;i++){
@@ -1913,16 +2081,25 @@ int main(int argc,char **argv){
       double numActive=1;
       if(qtlSumVec[q].active) numActive=(double) qtlSumVec[q].active;
       
-      QTLResults << q << "\t" << lociMap[i].name << "\t" << lociMap[i].chrom << "\t"<< lociMap[i].pos<<"\t"<< ((double) qtlSumVec[q].active)/numSampled << "\t" << qtlSumVec[q].b/numSampled << "\t" << ((double) windowSumVec[q])/numSampled;
-      for(int l=0;l<nStates;l++) QTLResults << "\t" <<  2.*((double) qtlSumVec[q].delta[l])/numActive-1.;
+      QTLResults << q << "\t" << lociMap[i].name << "\t" << lociMap[i].chrom << "\t"<< lociMap[i].pos<<"\t"<< ((double) qtlSumVec[q].active)/numSampled<<"\t"<< ((double) qtlSumVec[q].all)/numSampled  ;
+      for(int t=0;t<nTraits;t++)  {
+	QTLResults << "\t" << ((double) windowSumVec[q][t])/numSampled;
+	QTLResults << "\t" << qtlSumVec[q].b[t]/numSampled << "\t" <<  qtlSumVec[q].activeTrait[t]/numActive;
+	for(int l=0;l<nStates;l++) QTLResults << "\t" <<  2.*((double) qtlSumVec[q].delta[t][l])/((double) qtlSumVec[q].activeTrait[t])-1.;
+      }
       //for(int l=0;l<nStates;l++) QTLResults << "\t" <<HMM.loci[i].pState[l]/(2.*(nSeq+priorCount));
       //for(int l=0;l<nStates;l++) QTLResults << "\t" <<HMM.loci[i].e[l];
       QTLResults << endl;
     }
   }
   
+  gHatResults.open(gHatName);
+  gHatResults << "ID";
+  for(int t=0;t<nTraits;t++) gHatResults << "\tgHat_" + phenLabels[t+1] +"\tPEV_" + phenLabels[t+1];
+  gHatResults << endl;
   for(int a=0;a<nPheno;a++){
-    gHatResults << phenID[a] << "\t" << gHatSum[a]/numSampled << "\t" <<  (gHatSumSq[a]-gHatSum[a]*gHatSum[a]/numSampled)/numSampled << endl;
+    gHatResults << phenID[a];
+    for(int t=0;t<nTraits;t++) gHatResults << "\t" << gHatSum[a](t)/numSampled << "\t" <<  (gHatSumSq[a](t)-gHatSum[a](t)*gHatSum[a](t)/numSampled)/numSampled << endl;
   }
 }
 
