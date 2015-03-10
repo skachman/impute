@@ -2099,7 +2099,9 @@ int main(int argc,char **argv){
   gHatResults << endl;
   for(int a=0;a<nPheno;a++){
     gHatResults << phenID[a];
-    for(int t=0;t<nTraits;t++) gHatResults << "\t" << gHatSum[a](t)/numSampled << "\t" <<  (gHatSumSq[a](t)-gHatSum[a](t)*gHatSum[a](t)/numSampled)/numSampled << endl;
+    for(int t=0;t<nTraits;t++) gHatResults << "\t" << gHatSum[a](t)/numSampled << "\t" <<  (gHatSumSq[a](t)-gHatSum[a](t)*gHatSum[a](t)/numSampled)/numSampled;
+    gHatResults << endl;
   }
+  
 }
 

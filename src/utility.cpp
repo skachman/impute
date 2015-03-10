@@ -394,12 +394,12 @@ void qtlXLocusSum::init(int ns,int nt){
 
 
 void qtlXLocusSum::updateSum(const qtlXLocus &A,const int nt){
-  
+  int nact=0;
   if(A.active){
     active++;
-    if(t==nt) all++;
     for(int l=0;l<nt;l++){
       if(A.activeTrait[l]){
+	nact++;
 	activeTrait[l]++;
 	if(A.b[l] >0){
 	  b[l]+=A.b[l];
@@ -415,6 +415,7 @@ void qtlXLocusSum::updateSum(const qtlXLocus &A,const int nt){
 	}
       }
     }
+    if(nact==nt) all++;
   }
 }
 
