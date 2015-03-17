@@ -16,12 +16,13 @@ int main(int argc,char **argv){
   vector<double> sig2rPrior,sig2r,nusig2r;
   map<string,int> sig2rVar;
   int failCode;
+  int threshold=0;
   mapName="Map.txt";
   genoName="geno.dat";
   int freqQTLKb=25; 
   int nStates=4;
   double lambdaKb=500.;
-  
+  normal zDist;
   double c=.95; // Not Used
   int nIter=0; // Number of iteration to build HMM
   string baseName,MCMCName,QTLName,gHatName;
@@ -58,6 +59,7 @@ int main(int argc,char **argv){
     if(!config.Load(argv[1])) exit(1);
     config.Get("fixEmitIteration",fixEmitIteration);
     config.Get("nusig2b",nusig2b);
+    config.Get("threshold",threshold);
     config.Get("sig2bPrior",sig2bPrior);
     config.Get("pi",pi);
     piPrior=pi;
@@ -203,6 +205,7 @@ int main(int argc,char **argv){
   cout << setw(22) << "FreqToSampleHaplo = " << " " << FreqToSampleHaplo << endl;
   cout << setw(22) << "printFreq = " << " " << printFreq << endl;
   cout << setw(22) << "outputFreq = " << " " << outputFreq << endl;
+  cout << setw(22) << "threshold = " << " " << threshold <<" # 0=not a threshold trait, 1=threshold trait (probit)  " << endl;
   //cout << setw(22) << "c = " << " " << c << endl;
   //cout << setw(22) << "windowSize = " << " " << windowSize << endl;
   cout << setw(22) << "nusig2e = " << " " << nusig2e << endl;
@@ -416,6 +419,7 @@ int main(int argc,char **argv){
   }
   getline(Pheno,line);
   vector<double> y,Xmu,rinverse;
+  vector<int> yCat;
   vector<int> phenSeq;
   vector<string> phenID;
   vector<string> phenLabels;
@@ -515,6 +519,7 @@ int main(int argc,char **argv){
 	case VAR_DEP_VAR:
 	  linestream >> val;
 	  y.push_back(val);
+	  if(threshold)yCat.push_back((int) val);
 	  break;
 	case VAR_RINVERSE:
 	  linestream >> val;
@@ -1226,8 +1231,19 @@ int main(int argc,char **argv){
       for(int iCv=0;iCv<nCovariate;iCv++) ysum-=valMatrix[iCv][a]*betaCov[iCv]; 
       
 
-   
-      yDev[a]+=ysum;
+      if(!threshold){
+	yDev[a]+=ysum;
+      }
+      else{
+	double prob1=cdf(zDist,-ysum);
+	if(yCat[a]) {
+	  y[a]=-ysum-quantile(zDist,prob1*u(gen));
+	}
+	else{
+	  y[a]=-ysum+quantile(zDist,(1.-prob1)*u(gen));
+	}
+	yDev[a]=y[a]+ysum;
+      }
     }
     
 

@@ -19,6 +19,9 @@
 
 #include <Eigen/Dense>
 
+#include <boost/math/distributions/normal.hpp> // for normal_distribution
+  using boost::math::normal; // typedef provides default type is double.
+
 #include "Configuration.h"
 
 

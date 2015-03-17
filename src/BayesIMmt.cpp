@@ -22,7 +22,8 @@ int main(int argc,char **argv){
   int freqQTLKb=25; 
   int nStates=4;
   double lambdaKb=500.;
-  double rho=.5;
+  double rho=.5,rhoPrior=0.5,rhoPriorCount=0;
+  int nBoth=0;
   double c=.95; // Not Used
   int nIter=0; // Number of iteration to build HMM
   string baseName,MCMCName,QTLName,gHatName;
@@ -84,6 +85,10 @@ int main(int argc,char **argv){
     if(!setPi)pi=piPrior;
     config.Get("piPriorCount",piPriorCount);
     config.Get("rho",rho);
+    config.Get("rhoPrior",rhoPrior);
+    config.Get("rhoPriorCount",rhoPriorCount);
+    if(!config.Get("rhoPrior",rhoPrior)) rhoPrior=rho;
+    if(!config.Get("rho",rho)) rho=rhoPrior;
     config.Get("genoName",genoName);
     config.Get("phenoName",phenoName);
     config.Get("mapName",mapName);
@@ -330,7 +335,9 @@ int main(int argc,char **argv){
   cout << setw(22) << "piPrior = " << " " << piPrior << endl;
   cout << setw(22) << "piPriorCount = " << " " << piPriorCount << " # 0=Fixed"<< endl;
   
-  cout << setw(22) << "rho = " << " " << rho << " # an active QTL is active for a specific trait" << endl;
+  cout << setw(22) << "rho = " << " " << rho << " # an active QTL is active for all traits" << endl;
+  cout << setw(22) << "rhoPrior = " << " " << rhoPrior << endl;
+  cout << setw(22) << "rhoPriorCount = " << " " << rho << " #  0=fixed" << endl;
   cout << setw(22) << "mu = " ;
   printVector(cout,mu," ");
   cout << endl;
@@ -531,7 +538,10 @@ int main(int argc,char **argv){
   }
   getline(Pheno,line);
   vector<Vector2d> y;
+  vector<vector<int> > missing;
+
   Vector2d ytmp(nTraits);
+  vector<int> misstmp(nTraits);
   Vector2d rinvtmp(nTraits);
   for(int t=0;t<nTraits;t++) rinvtmp[t]=1.;
   vector<double> Xmu;
@@ -622,6 +632,7 @@ int main(int argc,char **argv){
     int iCl=0;
     int iCv=0;
     int iRinv=0;
+    for(int t=0;t<nTraits;t++) misstmp[t]=0;
     stringstream linestream(line);
     linestream >> id;
     seqMapIt=seqMap.find(id);
@@ -633,9 +644,19 @@ int main(int argc,char **argv){
       for(int col=1;col<nColumns;col++){
 	switch(varType[col]){
 	case VAR_DEP_VAR:
-	  linestream >> val;
+	  linestream >> sVal;
+	  if((sVal.compare(".")==0) || (sVal.compare("NA")==0)){
+	    val=mu[t];
+	    misstmp[t]=1;
+	  }
+	  else{
+	    val=stod(sVal);
+	  }
 	  ytmp[t++]=val;
-	  if(t==nTraits) y.push_back(ytmp);
+	  if(t==nTraits) {
+	    y.push_back(ytmp);
+	    missing.push_back(misstmp);
+	  }
 	  break;
 	case VAR_RINVERSE:
 	  linestream >> val;
@@ -1078,11 +1099,11 @@ int main(int argc,char **argv){
   double flipDelta=1./((double) nStates);
   vector<qtlXLocus> qtlVec;
   vector<qtlXLocusSum> qtlSumVec;
-  vector<int> windowVec,windowLocus(nTraits,0);
-  vector<vector<int> > windowSumVec;
+  vector<int> windowVec,windowSingleVec,windowBothVec,windowLocus(nTraits,0);
+  vector<vector<int> > windowSumVec,windowSingleSumVec;
+  vector<int> windowBothSumVec;
   vector<long> activeLoci;
   long activePos=0;
-
   //vector<double> piVec(nQTLClasses,pi);
   //vector<double> sig2bVec(nQTLClassses,sig2b);
   vector<int> nQTLVec(nQTLClasses);
@@ -1092,7 +1113,10 @@ int main(int argc,char **argv){
   qtlVec.resize(nQTLLoci);
   qtlSumVec.resize(nQTLLoci);
   windowSumVec.assign(nQTLLoci,windowLocus);
+  windowSingleSumVec.assign(nQTLLoci,windowLocus);
   windowVec.resize(nQTLLoci);
+  windowBothVec.resize(nQTLLoci);
+  windowBothSumVec.resize(nQTLLoci,0);
   activeLoci.resize(0);
   LLT<Matrix2d> lltOfsig2b(sig2b);
   Matrix2d Bl=lltOfsig2b.matrixL();
@@ -1377,22 +1401,31 @@ int main(int argc,char **argv){
 	  if(qtlVec[locus].activeTrait[t])ysum(t)-=(qtlVec[locus].delta[I]+qtlVec[locus].delta[J])*qtlVec[locus].b(t);
 	}
       }
-
+      
       ysum-=mu;
       for(int iCl=0;iCl<nClass;iCl++){
 	ysum-=betaClass[iCl][posMatrix[iCl][a]];
       }
       for(int iCv=0;iCv<nCovariate;iCv++) ysum-=valMatrix[iCv][a]*betaCov[iCv]; 
       
-
-   
+      
+      
       yDev[a]+=ysum;
+      
+      for(int t=0;t<nTraits;t++){
+	if(missing[a][t]) {
+	  int ot=1-t;
+	  yDev[a][t]=(rinverse[a][ot]*sig2e(t,ot)*yDev[a][ot]/(sig2e(ot,ot))+Z(gen)/sqrt(sig2e(t,t)-sig2e(t,ot)*sig2e(ot,t)/sig2e(ot,ot)))/rinverse[a][t];
+	  y[a][t]=yDev[a][t]-ysum[t];
+	}
+      }
     }
     
 
     activeLoci.resize(0);
     int nRejectI2A=0;
     int nRejectA2I=0;
+    nBoth=0;
     nQTLVec.assign(nQTLClasses,0);
     for(long i=0;i<nQTLLoci;i++){
 
@@ -1775,6 +1808,7 @@ int main(int argc,char **argv){
 	    yDevpt=yDev.data();
             gHatpt=gHat.data();
 	    //#pragma omp parallel for schedule(static)
+	    if(T==nTraits) nBoth++;
 	    for(int t=0;t<nTraits;t++){
 	      if(T==t || T==nTraits){
 		for(int a=0;a<nPheno;a++){
@@ -1833,7 +1867,17 @@ int main(int argc,char **argv){
 	piClassVec[c]=numPi/denPi;
       }
     }
-    
+
+
+    //update rho
+    if(rhoPriorCount){
+      
+	gamma_distribution<double> gammaA(rhoPrior*rhoPriorCount+((double)(nBoth)),1.0);
+	gamma_distribution<double> gammaB((1.-rhoPrior)*rhoPriorCount+((double) (nQTL-nBoth)),1.0);
+	double numPi=gammaA(gen);
+	double denPi=numPi+gammaB(gen);
+	rho=numPi/denPi;
+    }
     
     computeLhsV=0;
     //update mu;
@@ -1971,17 +2015,33 @@ int main(int argc,char **argv){
       // cout << c << " nuTidle=" << nuTilde << "=" << nQTLVec[c] << "+" << nusig2bVec[c] << "\n ssbVec=" << ssbVec[c] << "\n sig2b=" << sig2bVec[c] << endl;
     }
     if(s>=nBurnIn){
+      windowBothVec.assign(nQTLLoci,0);
+      for(int i=0;i<nQTLLoci;i++){
+	if(qtlVec[i].active && qtlVec[i].t==nTraits){
+	    int start=lociMap[i].start;
+	    int end=lociMap[i].stop;
+	    for(int j=start;j<=end;j++) windowBothVec[j]=1;
+	}
+      }
+      for(int i=0;i<nQTLLoci;i++) {
+	if(windowBothVec[i]) windowBothSumVec[i]++;
+      }
       for(int t=0;t<nTraits;t++){
 	windowVec.assign(nQTLLoci,0);
+	windowSingleVec.assign(nQTLLoci,0);
 	for(int i=0;i<nQTLLoci;i++){
-	  if(qtlVec[i].active && qtlVec[i].activeTrait[t]){
+	  if(qtlVec[i].active && qtlVec[i].activeTrait[t] ){
 	    int start=lociMap[i].start;
 	    int end=lociMap[i].stop;
 	    for(int j=start;j<=end;j++) windowVec[j]=1;
+	    if(qtlVec[i].t==t)for(int j=start;j<=end;j++) windowSingleVec[j]=1;
 	  }
 	}
 	for(int i=0;i<nQTLLoci;i++) {
-	  if(windowVec[i]) windowSumVec[i][t]++;
+	  if(windowVec[i]) {
+	    windowSumVec[i][t]++;
+	    windowSingleSumVec[i][t]++;
+	  }
 	}
       }
     }
@@ -2061,9 +2121,10 @@ int main(int argc,char **argv){
   }
   
   QTLResults.open(QTLName);
-  QTLResults << "Loci\tName\tChrom\tPos\tmodelFreq\tAll";
+  QTLResults << "Loci\tName\tChrom\tPos\tmodelFreq\tAll\twindowAll";
   for(int t=0;t<nTraits;t++) {
     QTLResults << "\twindowFreq" << t;
+    QTLResults << "\twindowSingleFreq" << t;
     QTLResults << "\tb" << t;
     QTLResults << "\tActive" << t ;
     for(int l=0;l<nStates;l++) QTLResults << "\tDelta" << t << "_" << l ;
@@ -2081,9 +2142,13 @@ int main(int argc,char **argv){
       double numActive=1;
       if(qtlSumVec[q].active) numActive=(double) qtlSumVec[q].active;
       
-      QTLResults << q << "\t" << lociMap[i].name << "\t" << lociMap[i].chrom << "\t"<< lociMap[i].pos<<"\t"<< ((double) qtlSumVec[q].active)/numSampled<<"\t"<< ((double) qtlSumVec[q].all)/numSampled  ;
+      QTLResults << q << "\t" << lociMap[i].name << "\t" << lociMap[i].chrom << "\t"<< lociMap[i].pos<<"\t"
+		 << ((double) qtlSumVec[q].active)/numSampled
+		 <<"\t"<< ((double) qtlSumVec[q].all)/numSampled  
+		 <<"\t"<< ((double) windowBothSumVec[q])/numSampled  ;
       for(int t=0;t<nTraits;t++)  {
 	QTLResults << "\t" << ((double) windowSumVec[q][t])/numSampled;
+	QTLResults << "\t" << ((double) windowSingleSumVec[q][t])/numSampled;
 	QTLResults << "\t" << qtlSumVec[q].b[t]/numSampled << "\t" <<  qtlSumVec[q].activeTrait[t]/numActive;
 	for(int l=0;l<nStates;l++) QTLResults << "\t" <<  2.*((double) qtlSumVec[q].delta[t][l])/((double) qtlSumVec[q].activeTrait[t])-1.;
       }
@@ -2099,7 +2164,7 @@ int main(int argc,char **argv){
   gHatResults << endl;
   for(int a=0;a<nPheno;a++){
     gHatResults << phenID[a];
-    for(int t=0;t<nTraits;t++) gHatResults << "\t" << gHatSum[a](t)/numSampled << "\t" <<  (gHatSumSq[a](t)-gHatSum[a](t)*gHatSum[a](t)/numSampled)/numSampled;
+    for(int t=0;t<nTraits;t++) gHatResults << "\t" << gHatSum[a](t)/numSampled << "\t" <<  (gHatSumSq[a](t,t)-gHatSum[a](t)*gHatSum[a](t)/numSampled)/numSampled;
     gHatResults << endl;
   }
   
