@@ -394,19 +394,10 @@ int main(int argc,char **argv){
   Vector2d zVec;
   unsigned seed=3434241;
   random_device rd;
-  //mt19937 gen;
+ 
   gen.seed(rd());
-  //if(0) gen(seed);
-  /*
-    DIR *dirPtr = opendir("matvec_trash");
-        if (!dirPtr){
-                umask(0);
-                cout << "making matvec_trash directory" << endl;
-                mkdir("./matvec_trash",0777);
-        } 
-  matvec::SESSION.initialize("matvec_trash");
- */
-  //filename=mapName;
+  
+  
   MapFile.open(mapName);
   if(MapFile.fail()) {
     cout << "Failed to open map file " + mapName << endl;
@@ -427,7 +418,7 @@ int main(int argc,char **argv){
     lociMap[i].isSNP=i;
     lociMap[i].isQTL=-1;
     mapOrder[lociMap[i].name]=i;
-    //if(i<10) cout << lociMap[i].name << " " << i << endl;
+    
   }
 
   vector<int> chromStart,Chrom;
@@ -444,13 +435,10 @@ int main(int argc,char **argv){
   chromStart.push_back(lociMap.size());
   int nChrom=chromStart.size()-1;
 
-  if(0){
-    for(int chr=0;chr<nChrom;chr++) cout << chromStart[chr] << " ";
-    cout << endl;
-  }
+
   vector<long> posVector;
 
-  //filename="geno.dat";
+ 
   Geno.open(genoName);
   if(Geno.fail()) {
     cout << "Failed to open genotype file " + genoName << endl;
@@ -470,8 +458,6 @@ int main(int argc,char **argv){
       iVal=-1;
       posVector.push_back(-1);
     }
-    //if(ipos<10) cout << ipos << " "  << id << " " << iVal << endl;
-    //if(iVal >-1 && iVal < 10) cout << ipos << " "  << id <<  " " << iVal << " " << posVector[ipos] <<"*" <<endl;
     ipos++;
   }
   int nPos=posVector.size();
@@ -485,7 +471,6 @@ int main(int argc,char **argv){
       ID.push_back(id);
       seqMap[id]=seq++;
       vector<int> row(mapOrder.size(),-2);
-      //    X.push_back(row);
       long i=0;
       if((seq%200)==0) cout << seq << endl;
       while(linestr >> val){
@@ -499,11 +484,8 @@ int main(int argc,char **argv){
 	  iVal/=10;
 	}
 	
-	//  if(seq < 1 && i<5) cout << i << " " << val << " " << iVal << " " <<posVector[i] << endl;
-	//if(seq < 5 && posVector[i]<5 && posVector[i]> -1) cout << i << " " << val << " " << iVal << " " <<posVector[i] <<"*"<< endl;
 	
 	if(posVector[i]>-1) row[posVector[i]]=iVal;
-	//X.back()[posVector[i]]=iVal;
 	i++;
       }
       X.push_back(row);
@@ -526,27 +508,17 @@ int main(int argc,char **argv){
     cout << endl;
   }
   cout << endl;
-  //cout << seq <<endl;
   cout <<  "Number of genotyped animals: " << X.size() << endl;
   cout <<  "              Number of SNP: " << X[0].size() << endl<<endl;
-  //cout << X[X.size()-1].size() << endl;
   double nSeq;
   nSeq=(double) X.size();
-  if(0){
-    for(int i=0;i<10;i++){
-      cout << ID[i] ;
-      for(int j=0;j<5;j++){
-	cout << " " << X[i][j];
-      }
-      cout << endl;
-    }
-  }
+ 
 
 
   //
   // Read Pheno
   //
-  //filename="BWT.dat";
+ 
   cout << "Read in phenotype file" << endl;
   Pheno.open(phenoName);
   if(Pheno.fail()){
@@ -734,11 +706,6 @@ int main(int argc,char **argv){
   
 
     double sum=0,pival=0.30,delta=-.05;
-    /*   for(int i=0;i<nStates;i++){
-      HMM.pi[i]=pival;
-      sum+=pival;
-      pival+=delta;
-      }*/
     for(int i=0;i<nStates;i++) HMM.pi[i]=1./((double) nStates);
 
     for(int chr=0;chr<nChrom;chr++)  {
@@ -786,29 +753,7 @@ int main(int argc,char **argv){
     }
     HMM.initSeq();
 
-    if(0){
-      forwardVec(0,nLoci,HMM,X[0],HMM.piComb,f);
-      forward(0,nLoci,HMM,X[0],HMM.piComb);
-      for(int l=0;l<nComb;l++){
-	cout << "f " << HMM.stateI[l] << "/" << HMM.stateJ[l] ;
-	for(long i=0;i<4;i++){
-	  
-	  cout << " " << fixed << setprecision(4) << f[i][l] << " : " << HMM.loci[i].f[l];
-	}
-	cout << endl;
-      }
-      backwardVec(0, nLoci,HMM,X[0],HMM.piComb,HMMb);
-      backward(0, nLoci,HMM,X[0],HMM.piComb);
-      for(int l=0;l<nComb;l++){
-	cout << "b " << HMM.stateI[l] << "/" << HMM.stateJ[l];
-	for(long i=nLoci-1;i>nLoci-5;i--){
-	  
-	  cout << " " << fixed << setprecision(4) << HMMb[i][l] << " : " << HMM.loci[i].b[l];
-	}
-	cout << endl;
-      }
 
-    }
 #pragma omp parallel firstprivate(f,HMMb,E,pState,piVec,rf)
     {
       #pragma omp for schedule(static)
@@ -891,15 +836,6 @@ int main(int argc,char **argv){
 	}
       }
     }
-    /*
-    for(int l=0;l<nStates;l++){
-      HMM.pi[l]=0;
-      for(int chr=0;chr<nChrom;chr++){
-	HMM.pi[l]+=HMM.loci[0].pState[l]/(2.*(nSeq+priorCount));
-      }
-      HMM.pi[l]/=((double) nChrom);
-    }
-    */
     HMM.resetP();
     HMM.initPComb();
 
@@ -1019,7 +955,6 @@ int main(int argc,char **argv){
     for(int chr=0;chr<nChrom;chr++)  HMM.loci[chromStart[chr]].newChrom=0;
     for(int chr=0;chr<nChrom;chr++){
       aMapLocus.chrom=Chrom[chr];
-      //cout << "qpos "<< chromStart[chr] << " "  << lociMap[chromStart[chr]].pos+1 << " " << lociMap[chromStart[chr+1]-1].pos << endl;
       for(long qPos=lociMap[chromStart[chr]].pos+1;qPos<lociMap[chromStart[chr+1]-1].pos;qPos+=freqQTL,q++){
 	aMapLocus.name="QTL_" + to_string(Chrom[chr]) + "_" + to_string(qPos);
 	aMapLocus.pos=qPos;
@@ -1029,7 +964,6 @@ int main(int argc,char **argv){
 	lociMap.push_back(aMapLocus);
 	QTLClassVec.push_back(0);
 	QTLClassCount[0]++;
-	//if(q< 100) cout << q <<" " << aMapLocus.name << endl;
       }
     }
   }
@@ -1079,21 +1013,10 @@ int main(int argc,char **argv){
     }
   }
   
-  if(0){
-    for(int i=0;i<nQTLLoci;i+=1000){
-      cout<< i << " " << lociMap[i].start << " " << lociMap[i].stop << endl;
-    }
-  }
+
 
   XHaplo.resize(nQTLLoci);
   for(long i=0;i<nQTLLoci;i++) XHaplo[i].resize(nPheno);
-  //vector<vector<double> > XHaploT(nPheno);
-  //for(int a=0;a<nPheno;a++) XHaploT[a].resize(nLoci);
-  //haploMapLocus XHaploMapLocus(nStates,nPheno);
-  //vector<haplMapLocus > XHaploMap(nQTLLoci,XHaploMapLocus);
-  //vector<int> tmpState(2*nPheno);
-  //vector<int> tmpNLoci(nStates);
-  //vector<vector<int> > tmpLocus(nStates,tmpState)
  
   
   
@@ -1105,11 +1028,7 @@ int main(int argc,char **argv){
   MCMCSamples.open(MCMCName);
 
 
-  //double sig2bPrior=.5,sig2ePrior=20;
   
-  
-  //int nSamples=40;
-  //int nBurnIn=2;
   
   vector<double> AoverIVecP,AoverIVec;
   Matrix2d sig2e=sig2ePrior,sig2b=sig2bPrior,sig2g;
@@ -1124,8 +1043,6 @@ int main(int argc,char **argv){
   vector<int> windowBothSumVec;
   vector<long> activeLoci;
   long activePos=0;
-  //vector<double> piVec(nQTLClasses,pi);
-  //vector<double> sig2bVec(nQTLClassses,sig2b);
   vector<int> nQTLVec(nQTLClasses);
   vector<Matrix2d> ssbVec(nQTLClasses);
   
@@ -1155,7 +1072,7 @@ int main(int argc,char **argv){
   vector<Matrix2d> gHatSumSq(nPheno,Matrix2d::Zero());
   vector<double> xVec(nPheno),probClass(nComb);
   Vector2d *yDevpt,*gHatpt;
-  //MCMCSamples << "Sample\tmu\tsig2b\tsig2e\tsig2g\tpi";
+
   
   MCMCSamples << "Sample";
   for(int i=0;i<nTraits;i++) MCMCSamples << "\tmu_"+phenLabels[i+1];
@@ -1208,10 +1125,6 @@ int main(int argc,char **argv){
     }
     if(s<nStates) {
       dVec[s]=1;
-      if(0){
-	for(int i=0;i<nStates;i++) cout << dVec[i] << " ";
-	cout << endl;
-      }
       deltaStates.push_back(dVec);
     }
   }while(s<nStates);
@@ -1262,11 +1175,7 @@ int main(int argc,char **argv){
     if((s%FreqToSampleHaplo)==0){
 
 
-      /*for(long i=0;i<nQTLLoci;i++) {
-	for(int l=0;l<nStates;l++){
-	  XHaploMap[i][l].resize(0);
-	}
-	}*/
+     
       cout << endl << "Sampling haplotypes" << endl;
       computeLhsV=1;
       int nFlipped=0;
@@ -1278,7 +1187,6 @@ int main(int argc,char **argv){
 	int seq=phenSeq[a];
 	int ranClass,ranClassOld;
 	double logPNewvsOld;
-	//forward(0, nLoci,HMM,X[seq],HMM.piComb);
 	forwardVec(0, nLoci,HMM,X[seq],HMM.piComb,f);
 	vector<double> Pvec(nComb);
 	{
@@ -1322,7 +1230,6 @@ int main(int argc,char **argv){
 	    int J2=HMM.stateJ[ranClass];
 	    Pval=transSingle[I1==I2]*transSingle[J1==J2];
 	    if(I2!=J2) Pval+=transSingle[I1==J2]*transSingle[J1==I2];
-	    //Pval*=HMM.loci[i].f[l];
 	    Pval*=f[i][l];
 	    Pvec[l]=Pval;
 	    Psum+=Pval;
@@ -1363,7 +1270,6 @@ int main(int argc,char **argv){
 	if(s==0 || log(uSmp)<-.5*(yDevNew.dot(Rinv*yDevNew)-yDev[a].dot(Rinv*yDev[a]))){
 	  for(long i=0;i<nQTLLoci;i++) {
 	    XHaplo[i][a]=XHaploNew[i];
-	    //XHaploT[a][i]=XHaploNew[i];
 	  }
 	  logPHaplo[a]=logPNewvsOld;
 	  vecFlipped[a]=1;
@@ -1374,8 +1280,6 @@ int main(int argc,char **argv){
 	if(vecFlipped[a]==1) nFlipped++;
       }
       cout << "Accepted "<< nFlipped << " of " << nPheno << " proposed haplotypes." << endl;
-
-      //cout << "XHalpo " << XHaplo.size() <<"x" << XHaplo[0].size() << endl;
       cout << endl << "Haplotypes " <<endl <<endl;;
       for(int a=0;a<10;a++) 
 	{
@@ -1402,9 +1306,7 @@ int main(int argc,char **argv){
 
 
 
-    //double ssb=scaleB;
-    //    Matrix2d sse=scaleRes,ssg=Matrix2d::Zero();
-    //    vector<Matrix2d> ssbVec(nQTLClasses);
+   
     sse=scaleRes;
     ssg.setZero();
     
@@ -1415,13 +1317,10 @@ int main(int argc,char **argv){
     nQTL=activeLoci.size();
     yDev=y;
     for(int a=0;a<nPheno;a++) gHat[a].setZero();
-    //Vector2d ysum=Vector2d::Zero();
-    //vector<double> ysum(nTraits);
     #pragma omp parallel for schedule(static) firstprivate(ysum)
     for(int a=0;a<nPheno;a++){
       ysum.setZero();
       int seq=phenSeq[a];
-      //#pragma omp parallel for reduction (+:ysum)
       for(long i=0;i<nQTL;i++){
 	long locus=activeLoci[i];
 	int seqClass=XHaplo[locus][a];
@@ -1554,7 +1453,6 @@ int main(int argc,char **argv){
       int nowActive=0;
       int proposeActive=0;
       
-      //double logAoverI=log((1.-pi)/pi);
       b=qtlVec[i].b;
       
       for(int I=0;I<nStates;I++) rhsV[I].setZero();
@@ -1570,7 +1468,7 @@ int main(int argc,char **argv){
       
       if(!active && uSmp>inactiveProposal) proposeActive=1;
       computeLhsV=1;
-      if(proposeActive || active /*|| computeLhsV*/){
+      if(proposeActive || active ){
 	dVec=qtlVec[i].delta;
 	
 	for(int I=0;I<nStates;I++){
@@ -1578,11 +1476,10 @@ int main(int argc,char **argv){
 	  lhsVstmp[I].setZero();
 	}
 	for(int IJ=0;IJ<nComb;IJ++)lhsVtmp[IJ].setZero();
-	//yDevtmp.assign(nPheno,0.0);
+	
 	if(active){
 	  for(int t=0;t<nTraits;t++){
 	    if(qtlVec[i].activeTrait[t]){
-	      //#pragma omp parallel for schedule(static)
 	      for(int a=0;a<nPheno;a++){
 		int seqClass=XHaplo[i][a];
 		int I=HMM.stateI[seqClass];
@@ -1593,21 +1490,14 @@ int main(int argc,char **argv){
 	  }
 	}
 
-	//Matrix2d RinvScaled=Matrix2d::Zero();
-	//#pragma omp parallel firstprivate(rhsVtmp,lhsVtmp,lhsVstmp,RinvScaled)
 	{
 	  rhsVpt=rhsVtmp.data();
 	  lhsVpt=lhsVtmp.data();
 	  lhsVspt=lhsVstmp.data();
-	  //#pragma omp for schedule(static)
-	    
-	  //Vector2d ydev(nTraits);
 	  for(int a=0;a<nPheno;a++){
-	    //ydev=(Rinv*yDev[a].cwiseProduct(rinverse[a])).cwiseProduct(rinverse[a]);
 	    for(int ti=0;ti<nTraits;ti++){
 	      for(int tj=0;tj<nTraits;tj++){
 		RinvScaled(ti,tj)=rinverse[a][ti]*Rinv(ti,tj)*rinverse[a][tj];
-		//RinvS[ti][tj]=rinverse[a][ti]*Rinv(ti,tj)*rinverse[a][tj];
 	      }
 	    }
 	    ydev=RinvScaled*yDev[a];
@@ -1623,27 +1513,23 @@ int main(int argc,char **argv){
 	    }
 	  }
 
-	  //#pragma omp critical(updateRhsLhs)
 	  {
 	    for(int I=0;I<nStates;I++){
 	      rhsV[I]+=rhsVtmp[I];
-	      // cout << "rhsV " << I << "=" << rhsV[I] <<endl;
 	    } 
 	    if(computeLhsV){
 	      for(int I=0;I<nStates;I++){
 		lhsVs[I]+=lhsVstmp[I];
 		
-		//  cout << "lhsVs " << I << "=" << lhsVs[I] <<endl;
 	      }
 	      for(int l=0;l<nComb;l++){
 		lhsV[l]+=2.0*lhsVtmp[l];
 		
-		// cout << "lhsV " << l << "=" << lhsV[l] <<endl;
 	      }
 	    }
 	  }
 	}
-	  // matches omp parallel
+
 	  if(computeLhsV){
 	    lhsVArray[i]=lhsV;
 	    lhsVsArray[i]=lhsVs;
@@ -1704,13 +1590,6 @@ int main(int argc,char **argv){
 	  if(!active) {
 	    qtlVec[i].delta=deltaStates[uDelta(gen)];
 	  }
-	  if(0){  
-	    cout << QTLClass << endl;
-	    cout << sig2bVec[QTLClass] << endl;
-	    cout << piClassVec[QTLClass] << endl;
-	  }
-	  
-	  //cout << QTLClass << " " << Binv[0](0,0) << endl;
 	  calcDeltaProposalX(sig2e,sig2bVec[QTLClass],Rinv,Binv[QTLClass],qtlVec[i].delta,
 			    dVec,rhsV,lhsV,lhsVs,piClassVec[QTLClass],rho,nDeltaStates,nStates,
 			    pInactive,maxAoverI,AoverIVec,psum,RinvLogDet,BinvLogDet[QTLClass]);
@@ -1742,7 +1621,6 @@ int main(int argc,char **argv){
 	    T=t;
 	  }
 	  
-	  //cout << QTLClass << " " << Binv[0](0,0) << endl;
 	  calcDeltaProposalX(sig2e,sig2bVec[QTLClass],Rinv,Binv[QTLClass],deltaBase,
 			     dVec,rhsV,lhsV,lhsVs,piClassVec[QTLClass],rho,nDeltaStates,nStates,
 			     pInactiveP,maxAoverIP,AoverIVecP,psumP,RinvLogDet,BinvLogDet[QTLClass]);
@@ -1798,8 +1676,6 @@ int main(int argc,char **argv){
 	    }
 	    dVec=qtlVec[i].delta;
 	    T=qtlVec[i].t;
-	    //Vector2d RHS=Vector2d::Zero();
-	    //Matrix2d LHS=Matrix2d::Zero();
 	    RHS.setZero();
 	    LHS.setZero();
 	    double sumXY,sumXX;
@@ -1829,25 +1705,14 @@ int main(int argc,char **argv){
 	      }
 	    }
 	   
-	    //Matrix2d LHSinv=(LHS+Binv[QTLClass]).inverse();
 	    LHSinv=(LHS+Binv[QTLClass]).inverse();
 	    
-	    //LLT<Matrix2d> llt(LHSinv);
 	    llt.compute(LHSinv);
 	    Lmat=llt.matrixL(); 
-	    //b=LHSinv*RHS;
-	    //cout << "b " << LHS(0,0) << " " << RHS(0) << " " << b(0) << endl;
 	    
 	    Zvec(zVec);
 	    b=LHSinv*RHS+Lmat*zVec;
-	    /*
-	    for(int tj=0;tj<nTraits;tj++) {
-	      val=Z(gen);
-	      for(int ti=tj;ti<nTraits;ti++){
-		b[ti]+=L(ti,tj)*val;
-	      }
-	    }
-	    */
+
 	    
 	  
 	    //sample b
@@ -1855,16 +1720,14 @@ int main(int argc,char **argv){
 	    qtlVec[i].b=b;
 	    ssbVec[QTLClass]+=b*b.transpose();
 	    
-	    //if(printCnt++<5) cout<<  "b["<<i<<"] " <<  b << "\n LHS \n" << LHS << "\n Binv \n" << Binv[QTLClass] << "\n L \n" << L << "\n Z \n" << zVec << "\n RHS \n" << RHS << "\n ssbVec\n"<<  ssbVec[QTLClass] <<endl;
+
 	    nQTLVec[QTLClass]++;
 	    yDevpt=yDev.data();
             gHatpt=gHat.data();
 	    if(T==nTraits) nBoth++;
 	    for(int t=0;t<nTraits;t++){
 	      if(T==t || T==nTraits){
-		//#pragma omp parallel for schedule(static)
 		for(int a=0;a<nPheno;a++){
-		  //int seq=phenSeq[a];
 		  int seqClass=XHaplo[i][a];
 		  int I=HMM.stateI[seqClass];
 		  int J=HMM.stateJ[seqClass];
@@ -1878,9 +1741,6 @@ int main(int argc,char **argv){
 	}
       }
       
-      //if(qtlVec[i].active && !nowActive) cout << "Switch locus "<< i << " " << qtlVec[i].active << "=>" << nowActive << endl;
-      
-      
       
       if(s>=nBurnIn)qtlSumVec[i].updateSum(qtlVec[i],nTraits);
       
@@ -1889,9 +1749,7 @@ int main(int argc,char **argv){
 
     //Calc sig2g
     ssg.setZero();
-    //Vector2d sumg(Vector2d::Zero());
     sumg.setZero();
-    //#pragma omp parallel for schedule(static) reduction(+:ssg,sumg)
     for(int a=0;a<nPheno;a++) {
       ssg+=gHat[a]*gHat[a].transpose();
       sumg+=gHat[a];
@@ -1901,7 +1759,6 @@ int main(int argc,char **argv){
     
     //update gHatSum
     if(s>=nBurnIn){
-      //#pragma omp parallel for schedule(static)
       for(int a=0;a<nPheno;a++) {
 	gHat[a]-=sumg;
 	gHatSum[a]+=gHat[a];
@@ -1935,11 +1792,8 @@ int main(int argc,char **argv){
     
     computeLhsV=0;
     //update mu;
-    //Vector2d sumXY=Vector2d::Zero();
-    //Matrix2d sumXX=Rinv*0.0001;
     sumXY.setZero();
     sumXX=Rinv*0.0001;
-    //#pragma omp parallel for reduction (+:sumXY,sumXX) schedule(static)
     for(int a=0;a<nPheno;a++){
       yDev[a]+=mu;
       for(int ti=0;ti<nTraits;ti++){
@@ -1949,24 +1803,18 @@ int main(int argc,char **argv){
 	}
       }
     }
-    //Matrix2d sumXXinv=sumXX.inverse();
     sumXXinv=sumXX.inverse();
-    //LLT<Matrix2d> L(sumXXinv);
     L.compute(sumXXinv);
     Zvec(zVec);
-    //Vector2d deltaMu=sumXXinv*sumXY+L.matrixL()*zVec;
     deltaMu=sumXXinv*sumXY+L.matrixL()*zVec;
 
 
     yDevpt=yDev.data();
-    //#pragma omp parallel for schedule(static)
     for(int a=0;a<nPheno;a++) *(yDevpt+a)-=deltaMu;
-    // cout << "mu " << mu << " " << deltaMu<< " " << sumXY << " " << sumXX << " " << zVec  << endl;
     mu=deltaMu;
     
     //update Class effects;
     
-    //Matrix2d Dinv=Matrix2d::Zero();
     Dinv.setZero();
     for(int iCl=0;iCl<nClass;iCl++){
       if(classRandom[iCl]>-1) {
@@ -1975,13 +1823,9 @@ int main(int argc,char **argv){
       else{
 	Dinv=Rinv*0.0001;
       }
-      //vector<Matrix2d> sumXXVec(nLevels[iCl],Dinv);
-      //vector<Vector2d> sumXYVec(nLevels[iCl],Vector2d::Zero());
       sumXXVec.assign(nLevels[iCl],Dinv);
       sumXYVec.resize(nLevels[iCl]);
       for(int l=0;l<nLevels[iCl];l++) sumXYVec[l].setZero();
-      //cout << "iCl " << iCl << " lambdaC " << lambdaC<< endl;` 
-      //vector<Vector2d> deltaBeta(nLevels[iCl]);
       for(int a=0;a<nPheno;a++){
 	int l=posMatrix[iCl][a];
 	yDev[a]+=betaClass[iCl][l];
@@ -1999,16 +1843,12 @@ int main(int argc,char **argv){
 	Zvec(zVec);
 	betaClass[iCl][l]=sumXXinv*sumXYVec[l]+L.matrixL()*zVec;
       }
-      //#pragma omp parallel for schedule(static)
       for(int a=0;a<nPheno;a++)  yDev[a]-=betaClass[iCl][posMatrix[iCl][a]];
     }
     //update Covariate effects;
     for(int iCv=0;iCv<nCovariate;iCv++){
-      // Vector2d sumXY=Vector2d::Zero();
-      // Matrix2d sumXX=Matrix2d::Zero();
       sumXY.setZero();
       sumXX.setZero();
-      //#pragma omp parallel for schedule(static) reduction(+:sumXX,sumXY)
       for(int a=0;a<nPheno;a++){
 	yDev[a]+=valMatrix[iCv][a]*betaCov[iCv];
 	for(int ti=0;ti<nTraits;ti++){
@@ -2019,10 +1859,7 @@ int main(int argc,char **argv){
 	}
       }
       
-      //#pragma omp paralllel for schedule(static)
-      //Matrix2d sumXXinv=sumXX.inverse(); 
       sumXXinv=sumXX.inverse(); 
-      //LLT<Matrix2d> L(sumXXinv);
       L.compute(sumXXinv);
       Zvec(zVec);
       deltaBeta=sumXXinv*sumXY+L.matrixL()*zVec;
@@ -2040,22 +1877,16 @@ int main(int argc,char **argv){
 	for(int l=0;l<nLevels[iCl];l++)  {
 	  ssr+=betaClass[iCl][l]*betaClass[iCl][l].transpose();
 	}
-	//Matrix2d wMat;
 	rWishartX(ssr.inverse(),nuTilde,wMat);
 	sig2r[iR]=wMat.inverse();
-	//	cout << "ssr " << ssr << " iR " <<  iR << " Scale " << sig2rPrior[iR]*(nusig2r[iR]-2.) << " nuTilde " << nuTilde << endl;
       }
     }
 
     //update sig2e;
     nuTilde=((double) nPheno)+nusig2e;
-    //cout << "sse " << sse << endl; 
     ssePart.setZero();
-    //#pragma omp parallel for schedule(static) reduction(+:ssePart)
     double ssMax=0,ydMax,rinvMax;
     int aMax;
-    ///Matrix2d ss;
-    //Vector2d yd;
     for(int a=0;a<nPheno;a++)  {
       yd=yDev[a].cwiseProduct(rinverse[a]);
       ss=yd*yd.transpose();
@@ -2064,22 +1895,17 @@ int main(int argc,char **argv){
 	ssMax=ss(0,0);
 	aMax=a;
       }
-      // if(a<2 || (a<1150 and a>1147)) cout << a <<" sse Calc " << yDev[a](0) << " * " << rinverse[a](0) << " = " << yd << " ss=" << ss << " ssePart=" << ssePart(0,0) << endl;
     }
-    //cout << "aMax " << aMax << " " << yDev[aMax](0) << " " << rinverse[aMax](0) << " " << ssMax << endl;
     sse+=ssePart;
     rWishartX(sse.inverse(),nuTilde,Rinv);
     sig2e=Rinv.inverse(); 
-    //cout << "Sig2E " << sse(0,0) << " " << nuTilde << " " << Rinv(0,0) << " " << sig2e(0,0) << endl; 
 
     //update sig2b;
     for(int c=0;c<nQTLClasses;c++){
       
       nuTilde=((double) nQTLVec[c])+nusig2bVec[c];
-      //Matrix2d wMat;
       rWishartX(ssbVec[c].inverse(),nuTilde,wMat);
       sig2bVec[c]=wMat.inverse();
-      // cout << c << " nuTidle=" << nuTilde << "=" << nQTLVec[c] << "+" << nusig2bVec[c] << "\n ssbVec=" << ssbVec[c] << "\n sig2b=" << sig2bVec[c] << endl;
     }
     if(s>=nBurnIn){
       windowBothVec.assign(nQTLLoci,0);
@@ -2198,8 +2024,6 @@ int main(int argc,char **argv){
     QTLResults << "\tActive" << t ;
     for(int l=0;l<nStates;l++) QTLResults << "\tDelta" << t << "_" << l ;
   }
-  //for(int l=0;l<nStates;l++) QTLResults << "\thaploFreq" << l ;
-  //for(int l=0;l<nStates;l++) QTLResults << "\thaploTemplate" << l ;
   QTLResults << endl;
   
   double numSampled;
@@ -2207,7 +2031,6 @@ int main(int argc,char **argv){
   for(long i=0;i<nLoci;i++){
     int q=lociMap[i].isQTL;
     if(q>=0){
-      //cout << i << " " << q << endl;
       double numActive=1;
       if(qtlSumVec[q].active) numActive=(double) qtlSumVec[q].active;
       
@@ -2221,8 +2044,6 @@ int main(int argc,char **argv){
 	QTLResults << "\t" << qtlSumVec[q].b[t]/numSampled << "\t" <<  qtlSumVec[q].activeTrait[t]/numActive;
 	for(int l=0;l<nStates;l++) QTLResults << "\t" <<  2.*((double) qtlSumVec[q].delta[t][l])/((double) qtlSumVec[q].activeTrait[t])-1.;
       }
-      //for(int l=0;l<nStates;l++) QTLResults << "\t" <<HMM.loci[i].pState[l]/(2.*(nSeq+priorCount));
-      //for(int l=0;l<nStates;l++) QTLResults << "\t" <<HMM.loci[i].e[l];
       QTLResults << endl;
     }
   }
