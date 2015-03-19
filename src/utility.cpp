@@ -1,5 +1,6 @@
 #include "impute.h"
 
+#define EIGEN_DONT_PARALLELIZE
 
 void calcDeltaProposalFullX(const Matrix2d &sig2e,const Matrix2d &sig2b,const Matrix2d &Rinv,const Matrix2d &Binv,const vector<int> &delta,vector<vector<int> > &deltaStates,
 			    vector<int> &dVec,vector<Vector2d> &rhsV,vector<Matrix2d> &lhsV,vector<Matrix2d> &lhsVs,const double pi, const double rho,const int nDeltaStates,const int nStates,

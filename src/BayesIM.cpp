@@ -1684,33 +1684,35 @@ int main(int argc,char **argv){
     }
 
     //update sig2e;
-    nuTilde=((double) nPheno)+nusig2e;
-    //cout << "sse " << sse << endl; 
-    double ssePart=0,ssMax=0,ss;
-    int aMax;
-    //#pragma omp parallel for schedule(static) reduction(+:ssePart) 
-    for(int a=0;a<nPheno;a++)  {
-      ss=yDev[a]*yDev[a]*rinverse[a];
-      ssePart+=ss;
-      if(ss>ssMax){
-	aMax=a;
-	ssMax=ss;
+    if(!threshold){
+      nuTilde=((double) nPheno)+nusig2e;
+      //cout << "sse " << sse << endl; 
+      double ssePart=0,ssMax=0,ss;
+      int aMax;
+      //#pragma omp parallel for schedule(static) reduction(+:ssePart) 
+      for(int a=0;a<nPheno;a++)  {
+	ss=yDev[a]*yDev[a]*rinverse[a];
+	ssePart+=ss;
+	if(ss>ssMax){
+	  aMax=a;
+	  ssMax=ss;
+	}
       }
+      
+      sse+=ssePart;
+      //cout << "aMax " << aMax << " " << yDev[aMax] << " " << rinverse[aMax] << " " << ssMax << endl;
+      //cout << sse << " "<< nuTilde  << " " <<1./sig2e << " " <<  sig2e << endl;
+      
+      
+      //    double X2;
+      //    gamma_distribution<double> sig2eGamma(nuTilde/2.0,1.);
+      //    X2=2.*sig2eGamma(gen); //Chi-square;
+      //    sig2e=sse/X2;
+      gamma_distribution<double> sig2eGamma(nuTilde/2.0,2./sse);
+      sig2e=1./sig2eGamma(gen);
+      //cout << "Sig2E " << sse << " " << nuTilde << " " << X2 << " " << sig2e << endl; 
     }
     
-    sse+=ssePart;
-    //cout << "aMax " << aMax << " " << yDev[aMax] << " " << rinverse[aMax] << " " << ssMax << endl;
-    //cout << sse << " "<< nuTilde  << " " <<1./sig2e << " " <<  sig2e << endl;
-    
-
-    //    double X2;
-    //    gamma_distribution<double> sig2eGamma(nuTilde/2.0,1.);
-    //    X2=2.*sig2eGamma(gen); //Chi-square;
-    //    sig2e=sse/X2;
-    gamma_distribution<double> sig2eGamma(nuTilde/2.0,2./sse);
-    sig2e=1./sig2eGamma(gen);
-    //cout << "Sig2E " << sse << " " << nuTilde << " " << X2 << " " << sig2e << endl; 
-
     //update sig2b;
     for(int c=0;c<nQTLClasses;c++){
       //nQTL=activeLoci.size();

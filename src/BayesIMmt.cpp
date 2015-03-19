@@ -1,6 +1,7 @@
 #include "impute.h"
 #include <limits.h>
 
+#define EIGEN_DONT_PARALLELIZE
 
 uniform_real_distribution<double> u(0.,1.);
 normal_distribution<double> Z(0.,1.);
@@ -8,6 +9,16 @@ mt19937 gen;
 
 int main(int argc,char **argv){
 
+  Eigen::initParallel();
+  
+  Vector2d RHS,sumg,sumXY,deltaMu,deltaBeta,yd,ysum,b,b1,yDevNew,ydev;
+  Matrix2d LHS,LHSinv,sumXX,sumXXinv,Dinv,wMat,ss,Lmat,Rinv,RinvScaled,ssr,ssePart;
+  Matrix2d sse,ssg;
+
+  LLT<Matrix2d> llt,L;
+  vector<Matrix2d> sumXXVec;
+  vector<Vector2d> sumXYVec;
+  
   string genoName,phenoName,mapName,SNPName,QTLMapName;
   string randomString;
   bool QTLMap;
@@ -33,6 +44,9 @@ int main(int argc,char **argv){
   int FreqToSampleHaplo=200; 
   int printFreq=10;
   int outputFreq=8;
+  int threshold=0;
+  
+  normal zDist;
   int windowSize=10;  //windowWidth=2*windowSize+1
   Matrix2d sig2bPrior,sig2ePrior;
   double pi=.99,inactiveProposal=0.9;
@@ -63,6 +77,7 @@ int main(int argc,char **argv){
     if(!config.Load(argv[1])) exit(1);
     
     config.Get("nTraits",nTraits);
+    config.Get("threshold",threshold);
     config.Get("nusig2b",nusig2b);
     string varianceString;
     config.Get("sig2bPrior",varianceString);
@@ -331,6 +346,8 @@ int main(int argc,char **argv){
       cout << endl; 
     }
   }
+  
+  cout << setw(22) << "threshold = " << " " << threshold <<" # 0=first trait not a threshold trait, 1=first trait a threshold trait (probit)  " << endl;
   cout << setw(22) << "pi = " << " " << pi << endl;
   cout << setw(22) << "piPrior = " << " " << piPrior << endl;
   cout << setw(22) << "piPriorCount = " << " " << piPriorCount << " # 0=Fixed"<< endl;
@@ -538,6 +555,7 @@ int main(int argc,char **argv){
   }
   getline(Pheno,line);
   vector<Vector2d> y;
+  vector<int> yCat;
   vector<vector<int> > missing;
 
   Vector2d ytmp(nTraits);
@@ -625,6 +643,7 @@ int main(int argc,char **argv){
   vector<Vector2d> betaCov(nCovariate,Vector2d::Zero());
   vector<int > nLevels(nClass,0);
   
+  
 
   
   int notFound=0;
@@ -652,6 +671,7 @@ int main(int argc,char **argv){
 	  else{
 	    val=stod(sVal);
 	  }
+	  if(threshold && t==0) yCat.push_back((int) val);
 	  ytmp[t++]=val;
 	  if(t==nTraits) {
 	    y.push_back(ytmp);
@@ -752,7 +772,7 @@ int main(int argc,char **argv){
   int nComb=HMM.nComb;
 
   vector<double> locusf(nComb),locusE(nStates);
-  vector< vector<double> > f(nLoci,locusf),b(nLoci,locusf);
+  vector< vector<double> > f(nLoci,locusf),HMMb(nLoci,locusf);
   vector<vector<double> > E(nLoci,locusE),pState(nLoci,locusE),piVec(nLoci,locusf);
   vector<double> recombFrac(nLoci,0.),rf(nLoci,0.);
   vector<double> pVec(nComb);
@@ -777,25 +797,25 @@ int main(int argc,char **argv){
 	}
 	cout << endl;
       }
-      backwardVec(0, nLoci,HMM,X[0],HMM.piComb,b);
+      backwardVec(0, nLoci,HMM,X[0],HMM.piComb,HMMb);
       backward(0, nLoci,HMM,X[0],HMM.piComb);
       for(int l=0;l<nComb;l++){
 	cout << "b " << HMM.stateI[l] << "/" << HMM.stateJ[l];
 	for(long i=nLoci-1;i>nLoci-5;i--){
 	  
-	  cout << " " << fixed << setprecision(4) << b[i][l] << " : " << HMM.loci[i].b[l];
+	  cout << " " << fixed << setprecision(4) << HMMb[i][l] << " : " << HMM.loci[i].b[l];
 	}
 	cout << endl;
       }
 
     }
-#pragma omp parallel firstprivate(f,b,E,pState,piVec,rf)
+#pragma omp parallel firstprivate(f,HMMb,E,pState,piVec,rf)
     {
       #pragma omp for schedule(static)
       for(int seq=0;seq< X.size();seq++){
 	
 	forwardVec(0,nLoci,HMM,X[seq],HMM.piComb,f);
-	backwardVec(0, nLoci,HMM,X[seq],HMM.piComb,b);
+	backwardVec(0, nLoci,HMM,X[seq],HMM.piComb,HMMb);
 	
 	vector<double> Pvec(nComb);
 	
@@ -807,12 +827,12 @@ int main(int argc,char **argv){
 	  double Psum=0;
 	  double Pval;
 	  for(int l=0;l<nComb;l++){
-	    Psum+=f[i][l]*b[i][l];
+	    Psum+=f[i][l]*HMMb[i][l];
 	  }
 	  for(int l=0;l<nComb;l++){
 	    int I=HMM.stateI[l];
 	    int J=HMM.stateJ[l];
-	    Pval=f[i][l]*b[i][l]/Psum;
+	    Pval=f[i][l]*HMMb[i][l]/Psum;
 	    Pvec[l]=Pval;
 	    piVec[i][l]+=Pval;
 	    pState[i][I]+=Pval;
@@ -848,7 +868,7 @@ int main(int argc,char **argv){
 	  for(int l=0;l<nComb;l++){
 	    HMM.loci[i].piVec[l]+=piVec[i][l];
 	    HMM.loci[i].f[l]+=f[i][l];
-	    HMM.loci[i].b[l]+=b[i][l];
+	    HMM.loci[i].b[l]+=HMMb[i][l];
 	  }
 	  for(int I=0;I<nStates;I++){ 
 	    HMM.loci[i].E[I]+=E[i][I];
@@ -1107,6 +1127,7 @@ int main(int argc,char **argv){
   //vector<double> piVec(nQTLClasses,pi);
   //vector<double> sig2bVec(nQTLClassses,sig2b);
   vector<int> nQTLVec(nQTLClasses);
+  vector<Matrix2d> ssbVec(nQTLClasses);
   
   uSmp=u(gen);
 
@@ -1215,17 +1236,21 @@ int main(int argc,char **argv){
   vector<vector<Matrix2d> > lhsVArray(nQTLLoci,lhsV),lhsVsArray(nQTLLoci,lhsVs);
   Vector2d *rhsVpt;
   Matrix2d *lhsVpt,*lhsVspt;
-  
+  vector<double> RinvRow(nTraits);
+  vector<vector<double> > RinvS(nTraits,RinvRow);
 
   f.resize(nLoci,locusf);
-  b.resize(nLoci,locusf);
+  HMMb.resize(nLoci,locusf);
 
+
+  vector<Matrix2d> Binv(nQTLClasses,Matrix2d::Zero());
+  vector<double> BinvLogDet(nQTLClasses);
+  
   for(int s=0;s<nSamples;s++){
     int printCnt=0;
-    vector<Matrix2d> Binv(nQTLClasses,Matrix2d::Zero());
-    vector<double> BinvLogDet(nQTLClasses);
     double RinvLogDet;
-    Matrix2d Rinv=sig2e.inverse();
+    Rinv=sig2e.inverse();
+    
     RinvLogDet=log(Rinv.determinant());
     for(int c=0;c<nQTLClasses;c++) {
       Binv[c]=sig2bVec[c].inverse();
@@ -1317,7 +1342,7 @@ int main(int argc,char **argv){
 	  logPNewvsOld+=log(Pvec[ranClass]);
 	}
 	
-	Vector2d yDevNew=y[a]-mu;
+	yDevNew=y[a]-mu;
 	for(int iCl=0;iCl<nClass;iCl++){
 	  yDevNew-=betaClass[iCl][posMatrix[iCl][a]];
 	}
@@ -1378,18 +1403,23 @@ int main(int argc,char **argv){
 
 
     //double ssb=scaleB;
-    Matrix2d sse=scaleRes,ssg=Matrix2d::Zero();
-    vector<Matrix2d> ssbVec(nQTLClasses);
+    //    Matrix2d sse=scaleRes,ssg=Matrix2d::Zero();
+    //    vector<Matrix2d> ssbVec(nQTLClasses);
+    sse=scaleRes;
+    ssg.setZero();
+    
     for(int c=0;c<nQTLClasses;c++){
       ssbVec[c]=sig2bPriorVec[c]*(nusig2bVec[c]-((double) nTraits)-1.);
     }
     
     nQTL=activeLoci.size();
     yDev=y;
-    gHat.assign(nPheno,Vector2d::Zero());
-#pragma omp parallel for schedule(static) 
+    for(int a=0;a<nPheno;a++) gHat[a].setZero();
+    //Vector2d ysum=Vector2d::Zero();
+    //vector<double> ysum(nTraits);
+    #pragma omp parallel for schedule(static) firstprivate(ysum)
     for(int a=0;a<nPheno;a++){
-      Vector2d ysum=Vector2d::Zero();
+      ysum.setZero();
       int seq=phenSeq[a];
       //#pragma omp parallel for reduction (+:ysum)
       for(long i=0;i<nQTL;i++){
@@ -1415,8 +1445,22 @@ int main(int argc,char **argv){
       for(int t=0;t<nTraits;t++){
 	if(missing[a][t]) {
 	  int ot=1-t;
-	  yDev[a][t]=(rinverse[a][ot]*sig2e(t,ot)*yDev[a][ot]/(sig2e(ot,ot))+Z(gen)/sqrt(sig2e(t,t)-sig2e(t,ot)*sig2e(ot,t)/sig2e(ot,ot)))/rinverse[a][t];
+	  yDev[a][t]=(rinverse[a][ot]*sig2e(t,ot)*yDev[a][ot]/(sig2e(ot,ot))+Z(gen)*sqrt(sig2e(t,t)-sig2e(t,ot)*sig2e(ot,t)/sig2e(ot,ot)))/rinverse[a][t];
 	  y[a][t]=yDev[a][t]-ysum[t];
+	}
+	else{
+	  if(t==1 && threshold){
+	    double meanVal=rinverse[a][1]*sig2e(0,1)*yDev[a][1]/(sig2e(1,1))/rinverse[a][0]-ysum[0];
+	    double sdVal=sqrt(sig2e(0,0)-sig2e(0,1)*sig2e(1,0)/sig2e(1,1))/rinverse[a][0];
+	    double prob1=cdf(zDist,meanVal/sdVal);
+	    if(yCat[a]) {
+	      y[a][0]=meanVal-quantile(zDist,prob1*u(gen))*sdVal;
+	    }
+	    else{
+	      y[a][0]=meanVal+quantile(zDist,(1.-prob1)*u(gen))*sdVal;
+	    }
+	    yDev[a]=y[a]+ysum;
+	  }
 	}
       }
     }
@@ -1434,10 +1478,10 @@ int main(int argc,char **argv){
 	if(i<(nQTLLoci-1)){
 	  if(qtlVec[i].active || qtlVec[i+1].active){
 	    int a0=qtlVec[i].active;
-	    Vector2d b=qtlVec[i].b;
+	    b=qtlVec[i].b;
 	    dVec=qtlVec[i].delta;
 	    int a1=qtlVec[i+1].active;
-	    Vector2d b1=qtlVec[i+1].b;
+	    b1=qtlVec[i+1].b;
 	    dVec1=qtlVec[i+1].delta;
 	    double ssSw;
 	    for(int a=0;a<nPheno;a++){
@@ -1448,7 +1492,7 @@ int main(int argc,char **argv){
 		  int J=HMM.stateJ[seqClass];
 		  int I1=HMM.stateI[seq1Class];
 		  int J1=HMM.stateJ[seq1Class];
-		  Vector2d yd=yDev[a];
+		  yd=yDev[a];
 		  if(a0){
 		    for(int t=0;t<nTraits;t++){
 		      if(qtlVec[i].activeTrait[t])yd(t)-=((dVec[I1]+dVec[I1])-(dVec[I]+dVec[I]))*b(t);
@@ -1511,12 +1555,12 @@ int main(int argc,char **argv){
       int proposeActive=0;
       
       //double logAoverI=log((1.-pi)/pi);
-      Vector2d b=qtlVec[i].b;
+      b=qtlVec[i].b;
       
-      rhsV.assign(nStates,Vector2d::Zero());
+      for(int I=0;I<nStates;I++) rhsV[I].setZero();
       if(computeLhsV){
-	lhsV.assign(nComb,Matrix2d::Zero());
-	lhsVs.assign(nStates,Matrix2d::Zero());
+	for(int IJ=0;IJ<nComb;IJ++) lhsV[IJ].setZero();
+	for(int I=0;I<nStates;I++)lhsVs[I].setZero();
       }
       else{
 	lhsV=lhsVArray[i];
@@ -1529,13 +1573,16 @@ int main(int argc,char **argv){
       if(proposeActive || active /*|| computeLhsV*/){
 	dVec=qtlVec[i].delta;
 	
-	rhsVtmp.assign(nStates,Vector2d::Zero());
-	lhsVtmp.assign(nComb,Matrix2d::Zero());
-	lhsVstmp.assign(nStates,Matrix2d::Zero());
+	for(int I=0;I<nStates;I++){
+	  rhsVtmp[I].setZero();
+	  lhsVstmp[I].setZero();
+	}
+	for(int IJ=0;IJ<nComb;IJ++)lhsVtmp[IJ].setZero();
 	//yDevtmp.assign(nPheno,0.0);
 	if(active){
 	  for(int t=0;t<nTraits;t++){
 	    if(qtlVec[i].activeTrait[t]){
+	      //#pragma omp parallel for schedule(static)
 	      for(int a=0;a<nPheno;a++){
 		int seqClass=XHaplo[i][a];
 		int I=HMM.stateI[seqClass];
@@ -1546,20 +1593,21 @@ int main(int argc,char **argv){
 	  }
 	}
 
-	//#pragma omp parallel firstprivate(rhsVtmp,lhsVtmp,lhsVstmp)
+	//Matrix2d RinvScaled=Matrix2d::Zero();
+	//#pragma omp parallel firstprivate(rhsVtmp,lhsVtmp,lhsVstmp,RinvScaled)
 	{
 	  rhsVpt=rhsVtmp.data();
 	  lhsVpt=lhsVtmp.data();
 	  lhsVspt=lhsVstmp.data();
 	  //#pragma omp for schedule(static)
-	  
-	  Matrix2d RinvScaled=Matrix2d::Zero();
+	    
+	  //Vector2d ydev(nTraits);
 	  for(int a=0;a<nPheno;a++){
-	    Vector2d ydev(nTraits);
 	    //ydev=(Rinv*yDev[a].cwiseProduct(rinverse[a])).cwiseProduct(rinverse[a]);
 	    for(int ti=0;ti<nTraits;ti++){
 	      for(int tj=0;tj<nTraits;tj++){
 		RinvScaled(ti,tj)=rinverse[a][ti]*Rinv(ti,tj)*rinverse[a][tj];
+		//RinvS[ti][tj]=rinverse[a][ti]*Rinv(ti,tj)*rinverse[a][tj];
 	      }
 	    }
 	    ydev=RinvScaled*yDev[a];
@@ -1571,7 +1619,7 @@ int main(int argc,char **argv){
 	    if(computeLhsV){
 	      *(lhsVspt+I)+=RinvScaled;
 	      *(lhsVspt+J)+=RinvScaled;
-	      *(lhsVpt+seqClass)+=2.0*RinvScaled;
+	      *(lhsVpt+seqClass)+=RinvScaled;
 	    }
 	  }
 
@@ -1588,7 +1636,7 @@ int main(int argc,char **argv){
 		//  cout << "lhsVs " << I << "=" << lhsVs[I] <<endl;
 	      }
 	      for(int l=0;l<nComb;l++){
-		lhsV[l]+=lhsVtmp[l];
+		lhsV[l]+=2.0*lhsVtmp[l];
 		
 		// cout << "lhsV " << l << "=" << lhsV[l] <<endl;
 	      }
@@ -1750,8 +1798,10 @@ int main(int argc,char **argv){
 	    }
 	    dVec=qtlVec[i].delta;
 	    T=qtlVec[i].t;
-	    Vector2d RHS=Vector2d::Zero();
-	    Matrix2d LHS=Matrix2d::Zero();
+	    //Vector2d RHS=Vector2d::Zero();
+	    //Matrix2d LHS=Matrix2d::Zero();
+	    RHS.setZero();
+	    LHS.setZero();
 	    double sumXY,sumXX;
 	    sumXY=0;
 	    sumXX=0;
@@ -1779,15 +1829,17 @@ int main(int argc,char **argv){
 	      }
 	    }
 	   
-	    Matrix2d LHSinv=(LHS+Binv[QTLClass]).inverse();
+	    //Matrix2d LHSinv=(LHS+Binv[QTLClass]).inverse();
+	    LHSinv=(LHS+Binv[QTLClass]).inverse();
 	    
-	    LLT<Matrix2d> llt(LHSinv);
-	    Matrix2d L=llt.matrixL(); 
+	    //LLT<Matrix2d> llt(LHSinv);
+	    llt.compute(LHSinv);
+	    Lmat=llt.matrixL(); 
 	    //b=LHSinv*RHS;
 	    //cout << "b " << LHS(0,0) << " " << RHS(0) << " " << b(0) << endl;
 	    
 	    Zvec(zVec);
-	    b=LHSinv*RHS+L*zVec;
+	    b=LHSinv*RHS+Lmat*zVec;
 	    /*
 	    for(int tj=0;tj<nTraits;tj++) {
 	      val=Z(gen);
@@ -1807,10 +1859,10 @@ int main(int argc,char **argv){
 	    nQTLVec[QTLClass]++;
 	    yDevpt=yDev.data();
             gHatpt=gHat.data();
-	    //#pragma omp parallel for schedule(static)
 	    if(T==nTraits) nBoth++;
 	    for(int t=0;t<nTraits;t++){
 	      if(T==t || T==nTraits){
+		//#pragma omp parallel for schedule(static)
 		for(int a=0;a<nPheno;a++){
 		  //int seq=phenSeq[a];
 		  int seqClass=XHaplo[i][a];
@@ -1824,7 +1876,7 @@ int main(int argc,char **argv){
 	    
 	}
 	}
-    }
+      }
       
       //if(qtlVec[i].active && !nowActive) cout << "Switch locus "<< i << " " << qtlVec[i].active << "=>" << nowActive << endl;
       
@@ -1833,10 +1885,12 @@ int main(int argc,char **argv){
       if(s>=nBurnIn)qtlSumVec[i].updateSum(qtlVec[i],nTraits);
       
     }
+    nQTL=activeLoci.size();
 
     //Calc sig2g
     ssg.setZero();
-    Vector2d sumg(Vector2d::Zero());
+    //Vector2d sumg(Vector2d::Zero());
+    sumg.setZero();
     //#pragma omp parallel for schedule(static) reduction(+:ssg,sumg)
     for(int a=0;a<nPheno;a++) {
       ssg+=gHat[a]*gHat[a].transpose();
@@ -1881,8 +1935,10 @@ int main(int argc,char **argv){
     
     computeLhsV=0;
     //update mu;
-    Vector2d sumXY=Vector2d::Zero();
-    Matrix2d sumXX=Rinv*0.0001;
+    //Vector2d sumXY=Vector2d::Zero();
+    //Matrix2d sumXX=Rinv*0.0001;
+    sumXY.setZero();
+    sumXX=Rinv*0.0001;
     //#pragma omp parallel for reduction (+:sumXY,sumXX) schedule(static)
     for(int a=0;a<nPheno;a++){
       yDev[a]+=mu;
@@ -1893,10 +1949,13 @@ int main(int argc,char **argv){
 	}
       }
     }
-    Matrix2d sumXXinv=sumXX.inverse();
-    LLT<Matrix2d> L(sumXXinv);
+    //Matrix2d sumXXinv=sumXX.inverse();
+    sumXXinv=sumXX.inverse();
+    //LLT<Matrix2d> L(sumXXinv);
+    L.compute(sumXXinv);
     Zvec(zVec);
-    Vector2d deltaMu=sumXXinv*sumXY+L.matrixL()*zVec;
+    //Vector2d deltaMu=sumXXinv*sumXY+L.matrixL()*zVec;
+    deltaMu=sumXXinv*sumXY+L.matrixL()*zVec;
 
 
     yDevpt=yDev.data();
@@ -1907,7 +1966,8 @@ int main(int argc,char **argv){
     
     //update Class effects;
     
-    Matrix2d Dinv=Matrix2d::Zero();
+    //Matrix2d Dinv=Matrix2d::Zero();
+    Dinv.setZero();
     for(int iCl=0;iCl<nClass;iCl++){
       if(classRandom[iCl]>-1) {
 	Dinv=sig2r[classRandom[iCl]].inverse();
@@ -1915,8 +1975,11 @@ int main(int argc,char **argv){
       else{
 	Dinv=Rinv*0.0001;
       }
-      vector<Matrix2d> sumXX(nLevels[iCl],Dinv);
-      vector<Vector2d> sumXY(nLevels[iCl],Vector2d::Zero());
+      //vector<Matrix2d> sumXXVec(nLevels[iCl],Dinv);
+      //vector<Vector2d> sumXYVec(nLevels[iCl],Vector2d::Zero());
+      sumXXVec.assign(nLevels[iCl],Dinv);
+      sumXYVec.resize(nLevels[iCl]);
+      for(int l=0;l<nLevels[iCl];l++) sumXYVec[l].setZero();
       //cout << "iCl " << iCl << " lambdaC " << lambdaC<< endl;` 
       //vector<Vector2d> deltaBeta(nLevels[iCl]);
       for(int a=0;a<nPheno;a++){
@@ -1924,25 +1987,27 @@ int main(int argc,char **argv){
 	yDev[a]+=betaClass[iCl][l];
 	for(int ti=0;ti<nTraits;ti++){
 	  for(int tj=0;tj<nTraits;tj++){
-	    sumXY[l](ti)+=rinverse[a](ti)*Rinv(ti,tj)*rinverse[a](tj)*yDev[a](tj);
-	    sumXX[l](ti,tj)+=rinverse[a](ti)*Rinv(ti,tj)*rinverse[a](tj);
+	    sumXYVec[l](ti)+=rinverse[a](ti)*Rinv(ti,tj)*rinverse[a](tj)*yDev[a](tj);
+	    sumXXVec[l](ti,tj)+=rinverse[a](ti)*Rinv(ti,tj)*rinverse[a](tj);
 	  }
 	}
 	
       }
       for(int l=0;l<nLevels[iCl];l++){
-	Matrix2d sumXXinv=sumXX[l].inverse();
-	LLT<Matrix2d> L(sumXXinv);
+	sumXXinv=sumXXVec[l].inverse();
+	L.compute(sumXXinv);
 	Zvec(zVec);
-	betaClass[iCl][l]=sumXXinv*sumXY[l]+L.matrixL()*zVec;
+	betaClass[iCl][l]=sumXXinv*sumXYVec[l]+L.matrixL()*zVec;
       }
       //#pragma omp parallel for schedule(static)
       for(int a=0;a<nPheno;a++)  yDev[a]-=betaClass[iCl][posMatrix[iCl][a]];
     }
     //update Covariate effects;
     for(int iCv=0;iCv<nCovariate;iCv++){
-      Vector2d sumXY=Vector2d::Zero();
-      Matrix2d sumXX=Matrix2d::Zero();
+      // Vector2d sumXY=Vector2d::Zero();
+      // Matrix2d sumXX=Matrix2d::Zero();
+      sumXY.setZero();
+      sumXX.setZero();
       //#pragma omp parallel for schedule(static) reduction(+:sumXX,sumXY)
       for(int a=0;a<nPheno;a++){
 	yDev[a]+=valMatrix[iCv][a]*betaCov[iCv];
@@ -1955,10 +2020,12 @@ int main(int argc,char **argv){
       }
       
       //#pragma omp paralllel for schedule(static)
-      Matrix2d sumXXinv=sumXX.inverse(); 
-      LLT<Matrix2d> L(sumXXinv);
+      //Matrix2d sumXXinv=sumXX.inverse(); 
+      sumXXinv=sumXX.inverse(); 
+      //LLT<Matrix2d> L(sumXXinv);
+      L.compute(sumXXinv);
       Zvec(zVec);
-      Vector2d deltaBeta=sumXXinv*sumXY+L.matrixL()*zVec;
+      deltaBeta=sumXXinv*sumXY+L.matrixL()*zVec;
       for(int a=0;a<nPheno;a++) yDev[a]-=deltaBeta*valMatrix[iCv][a];
       betaCov[iCv]=deltaBeta;
     }
@@ -1969,11 +2036,11 @@ int main(int argc,char **argv){
       int iR=classRandom[iCl];
       if(iR>-1){
 	nuTilde=((double)betaClass[iCl].size())+nusig2r[iR];
-	Matrix2d ssr=sig2rPrior[iR]*(nusig2r[iR]-1.-((double) nTraits));
+	ssr=sig2rPrior[iR]*(nusig2r[iR]-1.-((double) nTraits));
 	for(int l=0;l<nLevels[iCl];l++)  {
 	  ssr+=betaClass[iCl][l]*betaClass[iCl][l].transpose();
 	}
-	Matrix2d wMat;
+	//Matrix2d wMat;
 	rWishartX(ssr.inverse(),nuTilde,wMat);
 	sig2r[iR]=wMat.inverse();
 	//	cout << "ssr " << ssr << " iR " <<  iR << " Scale " << sig2rPrior[iR]*(nusig2r[iR]-2.) << " nuTilde " << nuTilde << endl;
@@ -1983,12 +2050,12 @@ int main(int argc,char **argv){
     //update sig2e;
     nuTilde=((double) nPheno)+nusig2e;
     //cout << "sse " << sse << endl; 
-    Matrix2d ssePart=Matrix2d::Zero();
+    ssePart.setZero();
     //#pragma omp parallel for schedule(static) reduction(+:ssePart)
     double ssMax=0,ydMax,rinvMax;
     int aMax;
-    Matrix2d ss;
-    Vector2d yd;
+    ///Matrix2d ss;
+    //Vector2d yd;
     for(int a=0;a<nPheno;a++)  {
       yd=yDev[a].cwiseProduct(rinverse[a]);
       ss=yd*yd.transpose();
@@ -2009,7 +2076,7 @@ int main(int argc,char **argv){
     for(int c=0;c<nQTLClasses;c++){
       
       nuTilde=((double) nQTLVec[c])+nusig2bVec[c];
-      Matrix2d wMat;
+      //Matrix2d wMat;
       rWishartX(ssbVec[c].inverse(),nuTilde,wMat);
       sig2bVec[c]=wMat.inverse();
       // cout << c << " nuTidle=" << nuTilde << "=" << nQTLVec[c] << "+" << nusig2bVec[c] << "\n ssbVec=" << ssbVec[c] << "\n sig2b=" << sig2bVec[c] << endl;
@@ -2040,6 +2107,8 @@ int main(int argc,char **argv){
 	for(int i=0;i<nQTLLoci;i++) {
 	  if(windowVec[i]) {
 	    windowSumVec[i][t]++;
+	  }
+	  if(windowSingleVec[i]) {
 	    windowSingleSumVec[i][t]++;
 	  }
 	}
