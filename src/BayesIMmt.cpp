@@ -829,7 +829,6 @@ int main(int argc,char **argv){
       for(int l=0;l<nStates;l++){
 	if(HMM.loci[i].pState[l] > 0){
 	  HMM.loci[i].e[l]=HMM.loci[i].E[l]/HMM.loci[i].pState[l];
-	  if(isnan(HMM.loci[i].e[l])) cout << i << " " << l << " "<< HMM.loci[i].E[l]<< " " <<HMM.loci[i].pState[l]<< endl;
 	}
 	else{
 	  HMM.loci[i].e[l]=0;

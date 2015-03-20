@@ -656,7 +656,6 @@ int main(int argc,char **argv){
 	      HMM.loci[i].e[l]=.01;
 	    }
 	  }
-	  if(isnan(HMM.loci[i].e[l])) cout << i << " " << l << " "<< HMM.loci[i].E[l]<< " " <<HMM.loci[i].pState[l]<< endl;
 	}
 	else{
 	  HMM.loci[i].e[l]=0;
