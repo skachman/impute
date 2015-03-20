@@ -164,7 +164,7 @@ int main(int argc,char **argv){
   double lambda=lambdaKb*1000.;
   int freqQTL=freqQTLKb*1000;
 
-  cout << argv[0] << ": Version 2.0" << " Mar. 10, 2015" << endl << endl;
+  cout << argv[0] << ": Version 3.0" << " Mar. 20, 2015" << endl << endl;
   
   cout << "Input Parameters" << endl <<endl;
   cout << setw(22) << "genoName = " << " " << genoName << endl;

@@ -260,7 +260,7 @@ int main(int argc,char **argv){
   double lambda=lambdaKb*1000.;
   int freqQTL=freqQTLKb*1000;
 
-  cout << argv[0] << ": Version 2.0" << " Mar. 10, 2015" << endl << endl;
+  cout << argv[0] << ": Version 3.0" << " Mar. 20, 2015" << endl << endl;
   
   cout << "Input Parameters" << endl <<endl;
   
@@ -1897,8 +1897,13 @@ int main(int argc,char **argv){
       }
     }
     sse+=ssePart;
-    rWishartX(sse.inverse(),nuTilde,Rinv);
-    sig2e=Rinv.inverse(); 
+    if(!threshold){
+      rWishartX(sse.inverse(),nuTilde,Rinv);
+      sig2e=Rinv.inverse();
+    }
+    else{
+      rInvWishartCond2d(sse.inverse(),nuTilde,sig2e);
+    }
 
     //update sig2b;
     for(int c=0;c<nQTLClasses;c++){

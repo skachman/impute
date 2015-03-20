@@ -973,6 +973,19 @@ void rWishartX(const Matrix2d &Sigma, const double n,Matrix2d &S){
 }
 
 
+// Sorensen and Gianola (2002) Chapter 14 page 626 see also Korsgaard et al. (1999)
+void rInvWishartCond2d(const Matrix2d &Sigma, const double n,Matrix2d &S){
+
+  gamma_distribution<double> X2(n/2.,2.*Sigma(1,1));
+  double x1=X2(gen);
+  double x2=Sigma(0,1)/Sigma(1,1)+Z(gen)*sqrt((Sigma(0,0)-Sigma(0,1)*Sigma(1,0)/Sigma(1,1))/x1);
+  
+  S(1,1)=x2*x2+1./x1;
+  S(0,1)=-x2;
+  S(1,0)=-x2;
+  S(0,0)=1.;
+}
+
 
 void Zvec(Vector2d &zVec,const int n){
   /*if(n){

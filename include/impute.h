@@ -302,6 +302,7 @@ int writeX(const string &filename,vector<vector<int> > &X,vector<string > &ID);
   int readX(const string &filename,vector<vector<int> > &X,vector<string > &ID,idmap &seqMap);
 void rWishartX(const Matrix2d &Sigma, const double n,Matrix2d &SL,Matrix2d &S);
 void rWishartX(const Matrix2d &Sigma, const double n,Matrix2d &S);
+void rInvWishartCond2d(const Matrix2d &Sigma, const double n,Matrix2d &S);
 void Zvec(Vector2d &Z,const int n=2);
 
 void printLower(ostream &out,const MatrixXd & A,const string sep="\t");
