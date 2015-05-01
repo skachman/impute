@@ -330,6 +330,7 @@ void qtlLocus::updateSum(const qtlLocus &A){
   
   if(A.active){
     active++;
+    gVar+=A.gVar;
     if(A.b >0){
       b+=A.b;
       for(int i=0;i<A.delta.size();i++){
@@ -348,6 +349,7 @@ void qtlLocus::updateSum(const qtlLocus &A){
 
 void qtlLocus::init(int ns){
   b=0;
+  gVar=0;
   delta.assign(ns,0);
   active=0;
 
@@ -360,6 +362,7 @@ void qtlLocus::init(int ns,double sig2b,double pi){
   normal_distribution<double> z(0.,1.);
  
   b=0;
+  gVar=0;
   delta.assign(ns,0);
   active=0;
   if(u(gen)>pi) {

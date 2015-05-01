@@ -84,7 +84,7 @@ bool locusMapCompare(locusMap &A,locusMap &B);
 
 class qtlLocus{
  public:
-  double b;
+  double b,gVar;
   vector<int> delta;
   int active;
   list<long> *activePos;
@@ -96,6 +96,7 @@ class qtlLocus{
 class qtlResultLocus{
  public:
   double b;
+  double gVar;
   vector<double> delta;
   double modelFreq;
   void init(int ns){delta.resize(ns);};

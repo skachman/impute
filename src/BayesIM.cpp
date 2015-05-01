@@ -22,6 +22,7 @@ int main(int argc,char **argv){
   int freqQTLKb=25; 
   int nStates=4;
   double lambdaKb=500.;
+  double windowWidthKb=1000.;
   normal zDist;
   double c=.95; // Not Used
   int nIter=0; // Number of iteration to build HMM
@@ -32,11 +33,12 @@ int main(int argc,char **argv){
   int FreqToSampleHaplo=200; 
   int printFreq=10;
   int outputFreq=8;
-  int windowSize=10;  //windowWidth=2*windowSize+1
+  
   double sig2bPrior=.05,sig2ePrior=5;
   double pi=.99,mu=0,inactiveProposal=0.9;
   double nusig2e=10,nusig2b=4;
   int deltaSampler=2;
+  int nWindowgVar=0;
   
   int enableSwapActive=0;
   
@@ -113,6 +115,7 @@ int main(int argc,char **argv){
     config.Get("freqQTLKb",freqQTLKb);
     config.Get("nStates",nStates);
     config.Get("lambdaKb",lambdaKb);
+    config.Get("windowWidthKb",windowWidthKb);
     config.Get("nIter",nIter);
     config.Get("baseName",baseName);
     MCMCName=baseName+"_MCMCSamples.txt";
@@ -131,7 +134,7 @@ int main(int argc,char **argv){
     config.Get("printFreq",printFreq);
     config.Get("outputFreq",outputFreq);
     config.Get("c",c); //Not Used
-    config.Get("windowSize",windowSize); //Not Used
+    //config.Get("windowSize",windowSize); //Not Used
     config.Get("nusig2e",nusig2e);
     config.Get("sig2ePrior",sig2ePrior);
     config.Get("mu",mu);
@@ -162,6 +165,8 @@ int main(int argc,char **argv){
 
   }
   double lambda=lambdaKb*1000.;
+  
+  long halfWindowWidth=((long) (windowWidthKb*500.));
   int freqQTL=freqQTLKb*1000;
 
   cout << argv[0] << ": Version 3.0" << " Mar. 20, 2015" << endl << endl;
@@ -190,6 +195,7 @@ int main(int argc,char **argv){
   cout << setw(22) << "freqQTLKb = " << " " << freqQTLKb << endl;
   cout << setw(22) << "nStates = " << " " << nStates << endl;
   cout << setw(22) << "lambdaKb = " << " " << lambdaKb << endl;
+  cout << setw(22) << "windowWidthKb = " << " " << windowWidthKb << endl;
   cout << setw(22) << "nIter = " << " " << nIter << endl;
   cout << setw(22) << "fixEmitIteration = " << " " << fixEmitIteration << endl;
   cout << setw(22) << "baseName = " << " " << baseName << endl;
@@ -820,23 +826,32 @@ int main(int argc,char **argv){
     HMM.loci[chromStart[chr]].newChrom=1;
   }
 
+
+  vector<int> windowSize(nQTLLoci,-1); //Set to -1 so we don't double count the QTL locus
+  vector<double> windowMean(nQTLLoci),windowSS(nQTLLoci),windowgVar(nQTLLoci,0.),windowgHat(nQTLLoci);
   for(int chr=0;chr<nChrom;chr++){
     for(long i=chromStart[chr];i<chromStart[chr+1];i++){
       int q=lociMap[i].isQTL;
       if(q>=0){
-	for(int j=i;j>=chromStart[chr] && lociMap[j].pos>lociMap[i].pos-500*1000 ; j--){
+	for(int j=i;j>=chromStart[chr] && lociMap[j].pos>lociMap[i].pos-halfWindowWidth ; j--){
 	  int qj=lociMap[j].isQTL;
-	  if(qj>=0) lociMap[q].start=qj;
+	  if(qj>=0) {
+	    lociMap[q].start=qj;
+	    windowSize[q]++;
+	  }
 	}
 	
-	for(int j=i;j<chromStart[chr+1] && lociMap[j].pos<lociMap[i].pos+500*1000 ; j++){
+	for(int j=i;j<chromStart[chr+1] && lociMap[j].pos<lociMap[i].pos+halfWindowWidth ; j++){
 	  int qj=lociMap[j].isQTL;
-	  if(qj>=0) 
-	  lociMap[q].stop=qj;
+	  if(qj>=0) {
+	    lociMap[q].stop=qj;
+	    windowSize[q]++;
+	  }
 	}
       }
     }
   }
+
   
 
   XHaplo.resize(nQTLLoci);
@@ -872,6 +887,8 @@ int main(int argc,char **argv){
   qtlSumVec.resize(nQTLLoci);
   windowSumVec.assign(nQTLLoci,0);
   windowVec.resize(nQTLLoci);
+
+  
   activeLoci.resize(0);
   for(long i=0;i<nQTLLoci;i++) {
     qtlVec[i].init(nStates,sig2b,pi);
@@ -1378,12 +1395,14 @@ int main(int argc,char **argv){
 	    nRejectI2A++;
 	    qtlVec[i].delta=deltaZero;
 	    qtlVec[i].b=0;
+	    qtlVec[i].gVar=0;
 	  }
 	}
 	if(accept || active){	
 	  if(accept && !proposeActive){
 	    qtlVec[i].active=0;
 	    qtlVec[i].b=0;
+	    qtlVec[i].gVar=0;
 	    qtlVec[i].delta=deltaZero;
 	  }
 	  else{
@@ -1415,7 +1434,9 @@ int main(int argc,char **argv){
 	    nQTLVec[QTLClass]++;
 	    yDevpt=yDev.data();
             gHatpt=gHat.data();
-
+	    double locusSumSq=0.;
+	    double locusSum=0.;
+	    
 	    for(int a=0;a<nPheno;a++){
 
 	      int seqClass=XHaplo[i][a];
@@ -1423,8 +1444,10 @@ int main(int argc,char **argv){
 	      int J=HMM.stateJ[seqClass];
 	      *(yDevpt+a)-=(dVec[I]+dVec[J])*b;
 	      *(gHatpt+a)+=(dVec[I]+dVec[J])*b;
+	      locusSum+=(dVec[I]+dVec[J])*b;
+	      locusSumSq+=(dVec[I]+dVec[J])*(dVec[I]+dVec[J])*b*b;
 	    }
-	    
+	    qtlVec[i].gVar=(locusSumSq-locusSum*locusSum/((double) nPheno))/((double) (nPheno-1));
 	}
 	}
       }
@@ -1551,7 +1574,7 @@ int main(int argc,char **argv){
       gamma_distribution<double> sig2bGamma(nuTilde/2.0,2./ssbVec[c]);
       sig2bVec[c]=1./sig2bGamma(gen);
     }
-    if(s>=nBurnIn){
+    if(s>=nBurnIn ){
       windowVec.assign(nQTLLoci,0);
       for(int i=0;i<nQTLLoci;i++){
 	if(qtlVec[i].active){
@@ -1560,10 +1583,52 @@ int main(int argc,char **argv){
 	  for(int j=start;j<=end;j++) windowVec[j]=1;
 	}
       }
+      
       for(int i=0;i<nQTLLoci;i++) {
 	if(windowVec[i]) windowSumVec[i]++;
       }
+      
+    
+      //windowGhat
+      if(s%outputFreq==0){
+	nWindowgVar++;
+	
+	windowMean.assign(nQTLLoci,0.);
+	windowSS.assign(nQTLLoci,0.);
+	for(int a=0;a<nPheno;a++)  {
+	  windowgHat.assign(nQTLLoci,0.);
+	  
+	  for(int i=0;i<nQTLLoci;i++){
+	    if(qtlVec[i].active){
+	      int start=lociMap[i].start;
+	      int end=lociMap[i].stop;
+	      double b=qtlVec[i].b;
+	      double locusgHat;
+	      int seqClass=XHaplo[i][a];
+	      int I=HMM.stateI[seqClass];
+	      int J=HMM.stateJ[seqClass];
+	      locusgHat=(dVec[I]+dVec[J])*b;
+	      for(int j=start;j<=end;j++) windowgHat[j]+=locusgHat;
+	    }
+	  }
+	  for(int i=0;i<nQTLLoci;i++) {
+	    if(windowVec[i]) {
+	      windowMean[i]+=windowgHat[i];
+	      windowSS[i]+=windowgHat[i]*windowgHat[i];
+	    }
+	  }
+	}
+
+	for(int i=0;i<nQTLLoci;i++) {
+	  if(windowVec[i]) {
+	    //windowMean[i]/=((double) nPheno);
+	    windowgVar[i]+=(windowSS[i]-windowMean[i]*windowMean[i]/((double) nPheno))/((double)(nPheno-1));
+	  }
+	}
+      }	
+      
     }
+  
     if(enableSwapActive){
       
       
@@ -1740,7 +1805,7 @@ int main(int argc,char **argv){
     }
   }
 
-  QTLResults << "Loci\tName\tChrom\tPos\tmodelFreq\tb\twindowFreq";
+  QTLResults << "Loci\tName\tChrom\tPos\tmodelFreq\tb\twindowSize\twindowFreq\tgVar\twindowgVar";
   for(int l=0;l<nStates;l++) QTLResults << "\tDelta" << l ;
 
   QTLResults << endl;
@@ -1753,7 +1818,8 @@ int main(int argc,char **argv){
       double numActive=1;
       if(qtlSumVec[q].active) numActive=(double) qtlSumVec[q].active;
       
-      QTLResults << q << "\t" << lociMap[i].name << "\t" << lociMap[i].chrom << "\t"<< lociMap[i].pos<<"\t"<< ((double) qtlSumVec[q].active)/numSampled << "\t" << qtlSumVec[q].b/numSampled << "\t" << ((double) windowSumVec[q])/numSampled;
+      QTLResults << q << "\t" << lociMap[i].name << "\t" << lociMap[i].chrom << "\t"<< lociMap[i].pos<<"\t"<< ((double) qtlSumVec[q].active)/numSampled << "\t" << qtlSumVec[q].b/numSampled <<
+	"\t" << windowSize[q] << "\t" << ((double) windowSumVec[q])/numSampled << "\t" << qtlSumVec[q].gVar/numSampled << "\t" << windowgVar[q]/((double) windowSize[q]);
       for(int l=0;l<nStates;l++) QTLResults << "\t" <<  2.*((double) qtlSumVec[q].delta[l])/numActive-1.;
       QTLResults << endl;
     }
