@@ -55,7 +55,7 @@ class locusMap{
  public:
   string name;
   int chrom,isSNP,isQTL;
-  long pos,start,stop;
+  long pos,start,stop,startPos,stopPos;
   locusMap(string s,int c, long p,int SNP,int QTL){name=s;chrom=c;pos=p;isSNP=SNP;isQTL=QTL;};
   locusMap(string s,int c, long p){name=s;chrom=c;pos=p;isSNP=1;isQTL=-1;};
   locusMap(){};
@@ -84,7 +84,7 @@ bool locusMapCompare(locusMap &A,locusMap &B);
 
 class qtlLocus{
  public:
-  double b;
+  double b,gVar;
   vector<int> delta;
   int active;
   list<long> *activePos;
@@ -96,6 +96,7 @@ class qtlLocus{
 class qtlResultLocus{
  public:
   double b;
+  double gVar;
   vector<double> delta;
   double modelFreq;
   void init(int ns){delta.resize(ns);};
