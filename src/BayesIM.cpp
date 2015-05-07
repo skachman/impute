@@ -34,6 +34,7 @@ int main(int argc,char **argv){
   int printFreq=10;
   int outputFreq=8;
   
+
   double sig2bPrior=.05,sig2ePrior=5;
   double pi=.99,mu=0,inactiveProposal=0.9;
   double nusig2e=10,nusig2b=4;
@@ -169,7 +170,7 @@ int main(int argc,char **argv){
   long halfWindowWidth=((long) (windowWidthKb*500.));
   int freqQTL=freqQTLKb*1000;
 
-  cout << argv[0] << ": Version 3.0" << " Mar. 20, 2015" << endl << endl;
+  cout << argv[0] << ": Version 3.1" << " May 1, 2015" << endl << endl;
   
   cout << "Input Parameters" << endl <<endl;
   cout << setw(22) << "genoName = " << " " << genoName << endl;
@@ -786,7 +787,10 @@ int main(int argc,char **argv){
     for(int chr=0;chr<nChrom;chr++)  HMM.loci[chromStart[chr]].newChrom=0;
     for(int chr=0;chr<nChrom;chr++){
       aMapLocus.chrom=Chrom[chr];
-      for(long qPos=lociMap[chromStart[chr]].pos+1;qPos<lociMap[chromStart[chr+1]-1].pos;qPos+=freqQTL,q++){
+      long startPos=lociMap[chromStart[chr]].pos+freqQTL;
+      long offset=startPos%freqQTL;
+      startPos-=offset;
+      for(long qPos=startPos;qPos<lociMap[chromStart[chr+1]-1].pos;qPos+=freqQTL,q++){
 	aMapLocus.name="QTL_" + to_string(Chrom[chr]) + "_" + to_string(qPos);
 	aMapLocus.pos=qPos;
 	aMapLocus.isSNP=-1;
@@ -837,14 +841,16 @@ int main(int argc,char **argv){
 	  int qj=lociMap[j].isQTL;
 	  if(qj>=0) {
 	    lociMap[q].start=qj;
+	    lociMap[q].startPos=lociMap[j].pos;
 	    windowSize[q]++;
 	  }
 	}
 	
-	for(int j=i;j<chromStart[chr+1] && lociMap[j].pos<lociMap[i].pos+halfWindowWidth ; j++){
+	for(int j=i;j<chromStart[chr+1] && lociMap[j].pos<=lociMap[i].pos+halfWindowWidth ; j++){
 	  int qj=lociMap[j].isQTL;
 	  if(qj>=0) {
 	    lociMap[q].stop=qj;
+	    lociMap[q].stopPos=lociMap[j].pos;
 	    windowSize[q]++;
 	  }
 	}
@@ -1805,7 +1811,7 @@ int main(int argc,char **argv){
     }
   }
 
-  QTLResults << "Loci\tName\tChrom\tPos\tmodelFreq\tb\twindowSize\twindowFreq\tgVar\twindowgVar";
+  QTLResults << "Loci\tName\tChrom\tPos\tmodelFreq\tb\twindowSize\twindowFirst\twindowLast\twindowFreq\tgVar\twindowgVar";
   for(int l=0;l<nStates;l++) QTLResults << "\tDelta" << l ;
 
   QTLResults << endl;
@@ -1819,7 +1825,7 @@ int main(int argc,char **argv){
       if(qtlSumVec[q].active) numActive=(double) qtlSumVec[q].active;
       
       QTLResults << q << "\t" << lociMap[i].name << "\t" << lociMap[i].chrom << "\t"<< lociMap[i].pos<<"\t"<< ((double) qtlSumVec[q].active)/numSampled << "\t" << qtlSumVec[q].b/numSampled <<
-	"\t" << windowSize[q] << "\t" << ((double) windowSumVec[q])/numSampled << "\t" << qtlSumVec[q].gVar/numSampled << "\t" << windowgVar[q]/((double) windowSize[q]);
+	"\t" << windowSize[q] << "\t"<< lociMap[q].startPos<< "\t"<< lociMap[q].stopPos<< "\t" << ((double) windowSumVec[q])/numSampled << "\t" << qtlSumVec[q].gVar/numSampled << "\t" << windowgVar[q]/((double) nWindowgVar);
       for(int l=0;l<nStates;l++) QTLResults << "\t" <<  2.*((double) qtlSumVec[q].delta[l])/numActive-1.;
       QTLResults << endl;
     }

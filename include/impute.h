@@ -55,7 +55,7 @@ class locusMap{
  public:
   string name;
   int chrom,isSNP,isQTL;
-  long pos,start,stop;
+  long pos,start,stop,startPos,stopPos;
   locusMap(string s,int c, long p,int SNP,int QTL){name=s;chrom=c;pos=p;isSNP=SNP;isQTL=QTL;};
   locusMap(string s,int c, long p){name=s;chrom=c;pos=p;isSNP=1;isQTL=-1;};
   locusMap(){};

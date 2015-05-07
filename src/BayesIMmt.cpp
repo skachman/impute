@@ -33,6 +33,7 @@ int main(int argc,char **argv){
   int freqQTLKb=25; 
   int nStates=4;
   double lambdaKb=500.;
+  double windowWidthKb=1000.;
   double rho=.5,rhoPrior=0.5,rhoPriorCount=0;
   int nBoth=0;
   double c=.95; // Not Used
@@ -47,7 +48,6 @@ int main(int argc,char **argv){
   int threshold=0;
   
   normal zDist;
-  int windowSize=10;  //windowWidth=2*windowSize+1
   Matrix2d sig2bPrior,sig2ePrior;
   double pi=.99,inactiveProposal=0.9;
   Vector2d mu;
@@ -166,6 +166,7 @@ int main(int argc,char **argv){
     config.Get("freqQTLKb",freqQTLKb);
     config.Get("nStates",nStates);
     config.Get("lambdaKb",lambdaKb);
+    config.Get("windowWidthKb",windowWidthKb);
     config.Get("nIter",nIter);
     config.Get("baseName",baseName);
     MCMCName=baseName+"_MCMCSamples.txt";
@@ -186,7 +187,6 @@ int main(int argc,char **argv){
     config.Get("printFreq",printFreq);
     config.Get("outputFreq",outputFreq);
     config.Get("c",c); //Not Used
-    config.Get("windowSize",windowSize); //Not Used
     config.Get("nusig2e",nusig2e);
 
     config.Get("sig2ePrior",varianceString);
@@ -258,9 +258,10 @@ int main(int argc,char **argv){
 
     }
   double lambda=lambdaKb*1000.;
+  long halfWindowWidth=((long) (windowWidthKb*500.));
   int freqQTL=freqQTLKb*1000;
 
-  cout << argv[0] << ": Version 3.0" << " Mar. 20, 2015" << endl << endl;
+  cout << argv[0] << ": Version 3.1" << " May 1, 2015" << endl << endl;
   
   cout << "Input Parameters" << endl <<endl;
   
@@ -294,6 +295,7 @@ int main(int argc,char **argv){
   cout << setw(22) << "freqQTLKb = " << " " << freqQTLKb << endl;
   cout << setw(22) << "nStates = " << " " << nStates << endl;
   cout << setw(22) << "lambdaKb = " << " " << lambdaKb << endl;
+  cout << setw(22) << "windowWidthKb = " << " " << windowWidthKb << endl;
   cout << setw(22) << "nIter = " << " " << nIter << endl;
   cout << setw(22) << "baseName = " << " " << baseName << endl;
   cout << setw(22) << "MCMCName = " << " " << MCMCName <<endl;
@@ -309,7 +311,6 @@ int main(int argc,char **argv){
   cout << setw(22) << "printFreq = " << " " << printFreq << endl;
   cout << setw(22) << "outputFreq = " << " " << outputFreq << endl;
   //cout << setw(22) << "c = " << " " << c << endl;
-  //cout << setw(22) << "windowSize = " << " " << windowSize << endl;
   cout << setw(22) << "nusig2e = " << " " << nusig2e << endl;
   cout << setw(22) << "sig2ePrior = ";
   for(int i=0;i<nTraits;i++){
@@ -954,7 +955,10 @@ int main(int argc,char **argv){
     for(int chr=0;chr<nChrom;chr++)  HMM.loci[chromStart[chr]].newChrom=0;
     for(int chr=0;chr<nChrom;chr++){
       aMapLocus.chrom=Chrom[chr];
-      for(long qPos=lociMap[chromStart[chr]].pos+1;qPos<lociMap[chromStart[chr+1]-1].pos;qPos+=freqQTL,q++){
+      long startPos=lociMap[chromStart[chr]].pos+freqQTL;
+      long offset=startPos%freqQTL;
+      startPos-=offset;
+      for(long qPos=startPos;qPos<lociMap[chromStart[chr+1]-1].pos;qPos+=freqQTL,q++){
 	aMapLocus.name="QTL_" + to_string(Chrom[chr]) + "_" + to_string(qPos);
 	aMapLocus.pos=qPos;
 	aMapLocus.isSNP=-1;
@@ -993,20 +997,27 @@ int main(int argc,char **argv){
     }
     HMM.loci[chromStart[chr]].newChrom=1;
   }
-
+  vector<int> windowSize(nQTLLoci,-1); //Set to -1 so we don't double count the QTL locus
   for(int chr=0;chr<nChrom;chr++){
     for(long i=chromStart[chr];i<chromStart[chr+1];i++){
       int q=lociMap[i].isQTL;
       if(q>=0){
-	for(int j=i;j>=chromStart[chr] && lociMap[j].pos>lociMap[i].pos-500*1000 ; j--){
+	for(int j=i;j>=chromStart[chr] && lociMap[j].pos>lociMap[i].pos-halfWindowWidth ; j--){
 	  int qj=lociMap[j].isQTL;
-	  if(qj>=0) lociMap[q].start=qj;
+	  if(qj>=0) {
+	    lociMap[q].start=qj;
+	    lociMap[q].startPos=lociMap[j].pos;
+	    windowSize[q]++;
+	  }
 	}
 	
-	for(int j=i;j<chromStart[chr+1] && lociMap[j].pos<lociMap[i].pos+500*1000 ; j++){
+	for(int j=i;j<chromStart[chr+1] && lociMap[j].pos<=lociMap[i].pos+halfWindowWidth ; j++){
 	  int qj=lociMap[j].isQTL;
-	  if(qj>=0) 
-	  lociMap[q].stop=qj;
+	  if(qj>=0) {
+	    lociMap[q].stop=qj;
+	    lociMap[q].stopPos=lociMap[j].pos;
+	    windowSize[q]++;
+	  }
 	}
       }
     }
@@ -2020,7 +2031,7 @@ int main(int argc,char **argv){
   }
   
   QTLResults.open(QTLName);
-  QTLResults << "Loci\tName\tChrom\tPos\tmodelFreq\tAll\twindowAll";
+  QTLResults << "Loci\tName\tChrom\tPos\tmodelFreq\tAll\twindowSize\twindowFirst\twindowLast\twindowAll";
   for(int t=0;t<nTraits;t++) {
     QTLResults << "\twindowFreq" << t;
     QTLResults << "\twindowSingleFreq" << t;
@@ -2038,9 +2049,12 @@ int main(int argc,char **argv){
       double numActive=1;
       if(qtlSumVec[q].active) numActive=(double) qtlSumVec[q].active;
       
-      QTLResults << q << "\t" << lociMap[i].name << "\t" << lociMap[i].chrom << "\t"<< lociMap[i].pos<<"\t"
-		 << ((double) qtlSumVec[q].active)/numSampled
+      QTLResults << q << "\t" << lociMap[i].name << "\t" << lociMap[i].chrom << "\t"<< lociMap[i].pos
+		 <<"\t"<< ((double) qtlSumVec[q].active)/numSampled
 		 <<"\t"<< ((double) qtlSumVec[q].all)/numSampled  
+		 <<"\t" <<  windowSize[q]
+		 << "\t"<< lociMap[q].startPos
+		 << "\t"<< lociMap[q].stopPos
 		 <<"\t"<< ((double) windowBothSumVec[q])/numSampled  ;
       for(int t=0;t<nTraits;t++)  {
 	QTLResults << "\t" << ((double) windowSumVec[q][t])/numSampled;
